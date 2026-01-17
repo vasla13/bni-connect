@@ -4,7 +4,6 @@ import { doc, onSnapshot, updateDoc, collection, query, orderBy, limit, addDoc, 
 import { httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { getQuestionPool } from '../data/questions'; 
 
 // IMPORTS COMPOSANTS
 import UserProfileHeader from '../components/UserProfileHeader';
@@ -13,7 +12,7 @@ import InfoModal from '../components/InfoModal';
 import EditProfileModal from '../components/EditProfileModal';
 import FormRunnerModal from '../components/FormRunnerModal';
 
-// NOUVEAUX IMPORTS (Dossier Dashboard)
+// IMPORTS DASHBOARD (Sous-composants)
 import TaskFeed from '../components/dashboard/TaskFeed';
 import WalletPanel from '../components/dashboard/WalletPanel';
 import FormsList from '../components/dashboard/FormsList';
@@ -21,60 +20,106 @@ import FormsList from '../components/dashboard/FormsList';
 export default function Dashboard() {
   const navigate = useNavigate();
   
-  // --- ETATS ---
+  // --- ÉTATS ---
   const [user, setUser] = useState(null);
   const [history, setHistory] = useState([]);
   const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
-  const [questionQueue, setQuestionQueue] = useState([]);
-  const [forms, setForms] = useState([]); 
+  const [questionQueue, setQuestionQueue] = useState([]); // Tâches rapides
+  const [forms, setForms] = useState([]); // Formulaires longs
   
+  // États Modales
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedForm, setSelectedForm] = useState(null);
   const [modalInfo, setModalInfo] = useState({ open: false, title: '', msg: '' });
 
-  // --- 1. CHARGEMENT DONNÉES ---
+  // --- 1. CHARGEMENT DONNÉES UTILISATEUR & SYSTÈME ---
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
     
-    // User, History, Withdrawals, Forms
-    const unsubUser = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => doc.exists() && setUser(doc.data()));
+    const uid = auth.currentUser.uid;
+
+    // A. Profil Utilisateur
+    const unsubUser = onSnapshot(doc(db, "users", uid), (doc) => {
+        if (doc.exists()) setUser(doc.data());
+    });
     
-    const qHistory = query(collection(db, "users", auth.currentUser.uid, "history"), orderBy("date", "desc"), limit(10));
-    const unsubHistory = onSnapshot(qHistory, (snap) => setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    // B. Historique (Derniers mouvements)
+    const qHistory = query(collection(db, "users", uid, "history"), orderBy("date", "desc"), limit(10));
+    const unsubHistory = onSnapshot(qHistory, (snap) => {
+        setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 
-    const qWithdrawals = query(collection(db, "withdrawals"), where("userId", "==", auth.currentUser.uid), where("statut", "==", "pending"));
-    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => setPendingWithdrawals(snap.docs.map(d => d.data())));
+    // C. Virements en attente (Pour le panneau Finance)
+    const qWithdrawals = query(collection(db, "withdrawals"), where("userId", "==", uid), where("statut", "==", "pending"));
+    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
+        setPendingWithdrawals(snap.docs.map(d => d.data()));
+    });
 
+    // D. Formulaires Disponibles (Dossiers Spéciaux)
     const qForms = query(collection(db, "forms")); 
-    const unsubForms = onSnapshot(qForms, (snap) => setForms(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubForms = onSnapshot(qForms, (snap) => {
+        setForms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
 
     return () => { unsubUser(); unsubHistory(); unsubWithdrawals(); unsubForms(); };
   }, [navigate]);
 
-  const totalPendingAmount = useMemo(() => pendingWithdrawals.reduce((acc, curr) => acc + (curr.montant || 0), 0), [pendingWithdrawals]);
+  // Calcul du montant total en attente de paiement
+  const totalPendingAmount = useMemo(() => {
+    return pendingWithdrawals.reduce((acc, curr) => acc + (curr.montant || 0), 0);
+  }, [pendingWithdrawals]);
 
-  // --- 2. LOGIQUE TÂCHES RAPIDES ---
+  // --- 2. LOGIQUE TÂCHES RAPIDES (DYNAMIQUE) ---
   useEffect(() => {
+    // Si la file d'attente est vide, on va chercher de nouvelles tâches en base de données
     if (questionQueue.length === 0) {
-      const fullPool = getQuestionPool();
-      setQuestionQueue(Array.from({ length: 5 }).map((_, i) => ({ 
-        ...fullPool[Math.floor(Math.random() * fullPool.length)], 
-        uniqueId: Date.now() + i 
-      })));
+       const qTasks = collection(db, "rapid_tasks");
+       
+       const unsubTasks = onSnapshot(qTasks, (snapshot) => {
+           const dbTasks = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+           
+           if (dbTasks.length > 0) {
+               // On mélange et on en prend 5 au hasard
+               const shuffled = dbTasks.sort(() => 0.5 - Math.random()).slice(0, 5);
+               // On ajoute un ID unique local pour éviter les clés dupliquées React
+               setQuestionQueue(shuffled.map((t, i) => ({ ...t, uniqueId: Date.now() + i })));
+           } else {
+               // Fallback si aucune tâche n'est créée par l'admin
+               setQuestionQueue([{ 
+                   text: "En attente d'ordres du commandement...", 
+                   reward: 0, 
+                   uniqueId: Date.now(), 
+                   type: 'text' 
+               }]);
+           }
+       });
+       
+       return () => unsubTasks();
     }
   }, [questionQueue.length]);
 
   // --- ACTIONS ---
+  
+  // Répondre à une Tâche Rapide
   const handleAnswerTask = async (ans, currentQuestion) => {
+    // On retire la question de la file locale immédiatement (optimiste)
     setQuestionQueue(prev => prev.slice(1));
+    
     try {
         const submitTask = httpsCallable(functions, 'submitTask');
         const result = await submitTask({ answer: ans, questionData: currentQuestion });
-        if (!result.data.success) setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
-    } catch (error) { console.error(error); }
+        
+        if (!result.data.success) {
+            setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
+        }
+    } catch (error) { 
+        console.error(error); 
+        // Optionnel : Gérer l'erreur visuellement
+    }
   };
 
+  // Demander un virement
   const handleWithdraw = async () => {
     if (!user || user.economy.enAttente < 2000) return;
     try {
@@ -87,8 +132,12 @@ export default function Dashboard() {
         date: new Date().toISOString(),
         statut: 'pending'
       });
-      await updateDoc(doc(db, "users", auth.currentUser.uid), { "economy.statutRetrait": "waiting", "economy.enAttente": 0 });
-      setModalInfo({ open: true, title: "TRANSMISSION", msg: "Demande transmise." });
+      // Mise à jour locale (optimiste) en attendant la cloud function
+      await updateDoc(doc(db, "users", auth.currentUser.uid), { 
+          "economy.statutRetrait": "waiting", 
+          "economy.enAttente": 0 
+      });
+      setModalInfo({ open: true, title: "TRANSMISSION", msg: "Demande de virement transmise à l'administration." });
     } catch (e) { console.error(e); }
   };
 
@@ -97,7 +146,7 @@ export default function Dashboard() {
   return (
     <div className="container" style={{ paddingBottom: '4rem' }}> 
       
-      {/* HEADER */}
+      {/* HEADER PROFIL */}
       <UserProfileHeader 
         user={user} 
         onEdit={() => setIsEditOpen(true)}
@@ -107,11 +156,15 @@ export default function Dashboard() {
 
       {/* CONTENU PRINCIPAL (2 COLONNES) */}
       <div className="grid-2" style={{ alignItems: 'start', marginTop: '2rem' }}>
+        
+        {/* GAUCHE : FLUX DE TÂCHES */}
         <TaskFeed 
             user={user} 
             queue={questionQueue} 
             onAnswer={handleAnswerTask} 
         />
+        
+        {/* DROITE : FINANCE */}
         <WalletPanel 
             user={user} 
             pendingAmount={totalPendingAmount} 
@@ -119,17 +172,37 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* LISTE DES FORMULAIRES (AVEC CORRECTIF) */}
+      {/* LISTE DES DOSSIERS SPÉCIAUX */}
       <FormsList 
           forms={forms} 
           user={user} 
           onSelect={setSelectedForm} 
       />
 
-      {/* MODALES */}
-      {modalInfo.open && <InfoModal title={modalInfo.title} msg={modalInfo.msg} onClose={() => setModalInfo({ ...modalInfo, open: false })} />}
-      {isEditOpen && <EditProfileModal user={user} onClose={() => setIsEditOpen(false)} onSave={async (info) => { await updateDoc(doc(db, "users", auth.currentUser.uid), { info }); setIsEditOpen(false); }} />}
+      {/* --- MODALES --- */}
       
+      {/* 1. Info / Alertes */}
+      {modalInfo.open && (
+          <InfoModal 
+              title={modalInfo.title} 
+              msg={modalInfo.msg} 
+              onClose={() => setModalInfo({ ...modalInfo, open: false })} 
+          />
+      )}
+
+      {/* 2. Édition Profil */}
+      {isEditOpen && (
+          <EditProfileModal 
+              user={user} 
+              onClose={() => setIsEditOpen(false)} 
+              onSave={async (info) => { 
+                  await updateDoc(doc(db, "users", auth.currentUser.uid), { info }); 
+                  setIsEditOpen(false); 
+              }} 
+          />
+      )}
+      
+      {/* 3. Historique */}
       {isHistoryOpen && (
         <div className="overlay" onClick={() => setIsHistoryOpen(false)}>
             <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
@@ -142,6 +215,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* 4. Form Runner (Jeu Dossier) */}
       {selectedForm && (
           <FormRunnerModal 
               form={selectedForm}
