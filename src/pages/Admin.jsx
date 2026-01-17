@@ -1,151 +1,131 @@
 import { useEffect, useState } from 'react';
-import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, runTransaction, updateDoc } from 'firebase/firestore';
+import { db, functions, auth } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
+import { CheckCircle, XCircle, Users, Wallet } from 'lucide-react'; // Icônes
 
 export default function Admin() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('pay');
-  const [withdrawals, setW] = useState([]);
+  const [activeTab, setActiveTab] = useState('withdrawals'); // 'withdrawals' ou 'users'
+  const [withdrawals, setWithdrawals] = useState([]);
   const [users, setUsers] = useState([]);
-  const [selectedUser, setSelUser] = useState(null);
-  
-  // États Popups
-  const [toast, setToast] = useState(null);
-  const [confirmModal, setConfirmModal] = useState({ open: false, item: null });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!auth.currentUser) return navigate('/');
-    const u1 = onSnapshot(collection(db, "withdrawals"), s => setW(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const u2 = onSnapshot(collection(db, "users"), s => setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() }))));
-    return () => { u1(); u2(); };
+    if (!auth.currentUser) navigate('/login');
+
+    // 1. Écouter les Virements
+    const qWithdrawals = query(collection(db, "withdrawals"), orderBy("date", "desc"));
+    const unsubWithdrawals = onSnapshot(qWithdrawals, (snapshot) => {
+      setWithdrawals(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // 2. Écouter les Utilisateurs (Citoyens)
+    const qUsers = query(collection(db, "users"));
+    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
+      setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubWithdrawals(); unsubUsers(); };
   }, [navigate]);
 
-  // Logique Copier (Toast)
-  const copy = (txt) => {
-    navigator.clipboard.writeText(txt);
-    setToast("Donnée copiée dans le presse-papier");
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  // Logique Paiement
-  const executePay = async () => {
-    const w = confirmModal.item;
-    if (!w) return;
+  const handleAction = async (id, action) => {
+    if (!confirm(action === 'approve' ? "Valider ce virement ?" : "Refuser ce virement ?")) return;
+    setLoading(true);
     try {
-      await runTransaction(db, async (t) => {
-        const uRef = doc(db, "users", w.userId);
-        const uDoc = await t.get(uRef);
-        if (!uDoc.exists()) return;
-        const newAtt = Math.max(0, uDoc.data().economy.enAttente - w.montant);
-        t.update(uRef, { 
-          "economy.enAttente": newAtt, 
-          "economy.gagneTotal": uDoc.data().economy.gagneTotal + w.montant, 
-          "economy.statutRetrait": "aucun" 
-        });
-        t.delete(doc(db, "withdrawals", w.id));
-      });
-      setConfirmModal({ open: false, item: null });
-      setToast("Virement validé avec succès");
-      setTimeout(() => setToast(null), 2500);
-    } catch (e) { alert(e); }
-  };
-
-  // Logique User
-  const saveUser = async () => {
-    if (selectedUser) {
-      await updateDoc(doc(db, "users", selectedUser.uid), { info: selectedUser.info });
-      setSelUser(null);
-      setToast("Profil utilisateur mis à jour");
-      setTimeout(() => setToast(null), 2500);
+      const manageWithdrawal = httpsCallable(functions, 'manageWithdrawal');
+      await manageWithdrawal({ withdrawalId: id, action });
+    } catch (error) {
+      alert("Erreur : " + error.message);
     }
+    setLoading(false);
   };
 
   return (
     <div className="container">
-      {toast && <div className="toast">{toast}</div>}
-
-      <div className="pro-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ margin: 0, color: 'white' }}>SUPERVISION BNI</h2>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className={tab === 'pay' ? 'btn-main' : 'btn-secondary'} onClick={() => setTab('pay')} style={{ width: 'auto' }}>PAIEMENTS</button>
-          <button className={tab === 'users' ? 'btn-main' : 'btn-secondary'} onClick={() => setTab('users')} style={{ width: 'auto' }}>CITOYENS</button>
-          <button className="btn-danger" onClick={() => navigate('/dashboard')}>QUITTER</button>
-        </div>
+      <div className="pro-card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0 }}>🛡️ ADMINISTRATION</h2>
+        <button className="btn-secondary" onClick={() => navigate('/dashboard')}>RETOUR DASHBOARD</button>
       </div>
 
-      {/* TAB PAIEMENTS */}
-      {tab === 'pay' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
-          {withdrawals.length === 0 && <p className="text-muted">Aucune demande en attente.</p>}
-          {withdrawals.map(w => (
-            <div key={w.id} className="pro-card" style={{ position: 'relative' }}>
-              <h3 className="text-cyan">{w.nomComplet} <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.nomComplet)}>COPIER</button></h3>
-              <div style={{ margin: '10px 0' }}>IBAN: <strong style={{ fontFamily: 'monospace' }}>{w.compteBancaire}</strong> <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.compteBancaire)}>COPIER</button></div>
-              <div style={{ margin: '10px 0' }}>TEL: {w.tel} <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.tel)}>COPIER</button></div>
-              <div style={{ fontSize: '1.5rem', color: 'var(--warning)', margin: '15px 0' }}>{w.montant} $ <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.montant)}>COPIER</button></div>
-              <button className="btn-main" onClick={() => setConfirmModal({ open: true, item: w })}>VALIDER VIREMENT</button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* BARRE D'ONGLETS */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button 
+          className={activeTab === 'withdrawals' ? 'btn-main' : 'btn-secondary'}
+          onClick={() => setActiveTab('withdrawals')}
+          style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+        >
+          <Wallet size={18} /> DEMANDES DE VIREMENT
+        </button>
+        <button 
+          className={activeTab === 'users' ? 'btn-main' : 'btn-secondary'}
+          onClick={() => setActiveTab('users')}
+          style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+        >
+          <Users size={18} /> LISTE DES CITOYENS
+        </button>
+      </div>
 
-      {/* TAB USERS */}
-      {tab === 'users' && !selectedUser && (
-        <div className="pro-card">
-          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}><th style={{ padding: '10px' }}>NOM</th><th>MÉTIER</th><th>ACTION</th></tr></thead>
-            <tbody>
+      <div className="pro-card">
+        
+        {/* VUE 1 : VIREMENTS */}
+        {activeTab === 'withdrawals' && (
+          <div>
+             <h3 className="text-cyan">EN ATTENTE DE VALIDATION</h3>
+             {withdrawals.length === 0 ? <p>Aucune demande.</p> : (
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                 {withdrawals.map((w) => {
+                   const isPending = !w.statut || w.statut === 'pending';
+                   return (
+                     <div key={w.id} style={{ 
+                       background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px',
+                       borderLeft: isPending ? '4px solid var(--warning)' : (w.statut === 'approved' ? '4px solid var(--success)' : '4px solid var(--danger)')
+                     }}>
+                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                         <div>
+                           <div style={{ fontWeight: 'bold' }}>{w.nomComplet}</div>
+                           <div className="text-muted">{w.tel} • {w.compteBancaire || 'Non renseigné'}</div>
+                         </div>
+                         <div style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.2rem' }}>{w.montant} $</div>
+                       </div>
+                       {isPending && (
+                         <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                           <button disabled={loading} onClick={() => handleAction(w.id, 'approve')} className="btn-success" style={{ flex: 1, background: 'var(--success)', border: 'none', padding: '5px', cursor: 'pointer' }}>✅ VALIDER</button>
+                           <button disabled={loading} onClick={() => handleAction(w.id, 'reject')} className="btn-danger" style={{ flex: 1, background: 'var(--danger)', border: 'none', padding: '5px', cursor: 'pointer' }}>❌ REFUSER</button>
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })}
+               </div>
+             )}
+          </div>
+        )}
+
+        {/* VUE 2 : LISTE DES CITOYENS */}
+        {activeTab === 'users' && (
+          <div>
+            <h3 className="text-cyan">ANNUAIRE DES CITOYENS ({users.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {users.map(u => (
-                <tr key={u.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '10px' }}>{u.info.prenom} {u.info.nom}</td>
-                  <td>{u.info.metier}</td>
-                  <td><button className="btn-secondary" onClick={() => setSelUser(u)}>GÉRER</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* DETAIL USER */}
-      {tab === 'users' && selectedUser && (
-        <div className="pro-card">
-          <button className="btn-secondary" onClick={() => setSelUser(null)}>← RETOUR LISTE</button>
-          <div className="grid-2" style={{ marginTop: '20px' }}>
-            <div>
-              <h3 className="text-cyan">INFOS CIVILES</h3>
-              <div className="input-group"><label>Prénom</label><input value={selectedUser.info.prenom} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, prenom: e.target.value } })} /></div>
-              <div className="input-group"><label>Nom</label><input value={selectedUser.info.nom} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, nom: e.target.value } })} /></div>
-              <div className="input-group"><label>Métier</label><input value={selectedUser.info.metier} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, metier: e.target.value } })} /></div>
-              <button className="btn-main" style={{ marginTop: '10px' }} onClick={saveUser}>SAUVEGARDER MODIFICATIONS</button>
-            </div>
-            <div>
-              <h3 style={{ color: 'var(--danger)' }}>DOSSIER SENSIBLE</h3>
-              {selectedUser.game?.answers?.filter(a => a.tag && a.tag !== "SANS TAG").map((a, i) => (
-                <div key={i} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>
-                  <strong style={{ color: 'var(--danger)' }}>[{a.tag}]</strong> {a.reponse}
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                  <img src={u.info?.avatar} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} alt="Avatar" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 'bold' }}>{u.info?.prenom} {u.info?.nom}</div>
+                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>{u.info?.metier} • {u.info?.tel}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ color: 'var(--success)', fontWeight: 'bold' }}>{u.economy?.gagneTotal || 0} $</div>
+                    <div style={{ fontSize: '0.7rem', color: '#aaa' }}>Gagnés au total</div>
+                  </div>
                 </div>
               ))}
-              {(!selectedUser.game?.answers || selectedUser.game.answers.length === 0) && <p className="text-muted">Aucune donnée signalée.</p>}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* MODALE CONFIRMATION PAIEMENT */}
-      {confirmModal.open && (
-        <div className="overlay">
-          <div className="modal-box">
-            <h3 className="text-cyan">CONFIRMATION</h3>
-            <p>Valider le virement de <strong>{confirmModal.item.montant}$</strong> pour {confirmModal.item.nomComplet} ?</p>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button className="btn-main" onClick={executePay}>OUI, PAYER</button>
-              <button className="btn-danger" onClick={() => setConfirmModal({ open: false, item: null })}>ANNULER</button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

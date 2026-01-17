@@ -1,20 +1,19 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Admin from './pages/Admin'; // Si tu as gardé le fichier Admin
+import Admin from './pages/Admin'; // <--- IMPORT
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/admin" element={<Admin />} /> {/* <--- ROUTE */}
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 

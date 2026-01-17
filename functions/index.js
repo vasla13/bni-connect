@@ -5,6 +5,7 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 setGlobalOptions({ region: "us-central1" });
 
+// --- 1. FONCTION JEU (Gère les tâches et le solde en attente) ---
 exports.submitTask = onCall(async (request) => {
   const { auth } = request;
   if (!auth) throw new HttpsError('unauthenticated', 'Identité introuvable.');
@@ -32,22 +33,16 @@ exports.submitTask = onCall(async (request) => {
       return { success: false, message: "Quota quotidien atteint." };
     }
 
-    // --- CALCULS STRICTS ---
-    // On ajoute 50$ SEULEMENT au solde "En attente" (Virtuel)
+    // Calculs (UNIQUEMENT VIRTUEL)
     const newBalance = (userData.economy.enAttente || 0) + REWARD_AMOUNT;
     const newCount = currentCount + 1;
     
-    // NOTE IMPORTANTE : On ne lit même pas 'gagneTotal' ici pour être sûr de ne pas le toucher.
-
-    // Mise à jour BDD
     transaction.update(userRef, {
       "economy.enAttente": newBalance,
-      // "economy.gagneTotal": ... <= CETTE LIGNE N'EXISTE PLUS
       "game.dailyCount": newCount,
       "game.lastQuestionDate": today
     });
 
-    // Ajout historique
     transaction.set(historyRef, {
       type: 'gain',
       label: 'Mission validée (En attente)',
@@ -56,5 +51,72 @@ exports.submitTask = onCall(async (request) => {
     });
 
     return { success: true, reward: REWARD_AMOUNT, message: "Tâche validée !" };
+  });
+});
+
+// --- 2. FONCTION ADMIN (Valide ou Refuse les virements) ---
+exports.manageWithdrawal = onCall(async (request) => {
+  const { auth, data } = request;
+  if (!auth) throw new HttpsError('unauthenticated', 'Accès interdit.');
+
+  const { withdrawalId, action } = data; // action = 'approve' ou 'reject'
+  
+  const db = admin.firestore();
+  const withdrawalRef = db.collection("withdrawals").doc(withdrawalId);
+
+  return db.runTransaction(async (transaction) => {
+    const withdrawalDoc = await transaction.get(withdrawalRef);
+    if (!withdrawalDoc.exists) throw new HttpsError('not-found', 'Demande introuvable.');
+    
+    const withdrawalData = withdrawalDoc.data();
+    if (withdrawalData.statut && withdrawalData.statut !== 'pending') {
+      throw new HttpsError('failed-precondition', 'Cette demande a déjà été traitée.');
+    }
+
+    const userId = withdrawalData.userId;
+    const amount = withdrawalData.montant;
+    const userRef = db.collection("users").doc(userId);
+    const userDoc = await transaction.get(userRef);
+    
+    if (!userDoc.exists) throw new HttpsError('not-found', 'Utilisateur introuvable.');
+    const userData = userDoc.data();
+
+    if (action === 'approve') {
+      // VALIDER : On déplace l'argent (Attente -> Gagné Total)
+      const newEnAttente = (userData.economy.enAttente || 0) - amount;
+      const newGagneTotal = (userData.economy.gagneTotal || 0) + amount;
+
+      transaction.update(userRef, {
+        "economy.enAttente": newEnAttente < 0 ? 0 : newEnAttente,
+        "economy.gagneTotal": newGagneTotal,
+        "economy.statutRetrait": "none" // Libère le statut
+      });
+
+      transaction.update(withdrawalRef, { 
+        statut: 'approved', 
+        processedAt: new Date().toISOString() 
+      });
+
+      transaction.set(userRef.collection("history").doc(), {
+        type: 'admin', label: 'Virement validé par Admin', montant: amount, date: new Date().toISOString()
+      });
+
+    } else if (action === 'reject') {
+      // REFUSER : On libère juste le statut (l'argent reste en attente)
+      transaction.update(userRef, {
+        "economy.statutRetrait": "none"
+      });
+
+      transaction.update(withdrawalRef, { 
+        statut: 'rejected', 
+        processedAt: new Date().toISOString() 
+      });
+      
+      transaction.set(userRef.collection("history").doc(), {
+        type: 'admin', label: 'Virement refusé (Fonds restitués)', montant: 0, date: new Date().toISOString()
+      });
+    }
+
+    return { success: true };
   });
 });
