@@ -1,18 +1,16 @@
-// src/pages/Dashboard.jsx
 import { useEffect, useState } from 'react';
 import { auth, db, functions } from '../firebase';
-import { doc, onSnapshot, updateDoc, collection, arrayUnion, query, orderBy, limit, addDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, orderBy, limit, addDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { getQuestionPool } from '../data/questions'; // <--- IMPORT MODIFIÉ
+import { getQuestionPool } from '../data/questions'; 
 import { useWindowSize } from 'react-use';
 import Confetti from 'react-confetti';
 
 import UserProfileHeader from '../components/UserProfileHeader';
 import GameCard from '../components/GameCard';
 import HistorySection from '../components/HistorySection';
-import EditProfileModal from '../components/EditProfileModal';
 import InfoModal from '../components/InfoModal';
 
 export default function Dashboard() {
@@ -21,20 +19,21 @@ export default function Dashboard() {
   
   const [user, setUser] = useState(null);
   const [history, setHistory] = useState([]);
-  const [questionQueue, setQuestionQueue] = useState([]); // Le deck
+  const [questionQueue, setQuestionQueue] = useState([]);
   
   const [showConfetti, setShowConfetti] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
   const [modalInfo, setModalInfo] = useState({ open: false, title: '', msg: '' });
 
-  // 1. Chargement User + History
+  // 1. Chargement Données
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
     
+    // User
     const unsubUser = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
       if (doc.exists()) setUser(doc.data());
     });
 
+    // Historique
     const q = query(collection(db, "users", auth.currentUser.uid, "history"), orderBy("date", "desc"), limit(5));
     const unsubHistory = onSnapshot(q, (snapshot) => {
       setHistory(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -43,13 +42,11 @@ export default function Dashboard() {
     return () => { unsubUser(); unsubHistory(); };
   }, [navigate]);
 
-  // 2. Initialisation du Deck via getQuestionPool
+  // 2. Initialisation Deck
   useEffect(() => {
     if (questionQueue.length === 0) {
-      const fullPool = getQuestionPool(); // Récupère tout (Random + Questionnaires)
-      
-      // On prend 5 questions au hasard dans le pool global
-      // (Ou tu peux faire une logique pour prioriser les questionnaires)
+      const fullPool = getQuestionPool();
+      // On prend 5 questions pour la pile locale
       const newDeck = Array.from({ length: 5 }).map((_, i) => {
         const rand = fullPool[Math.floor(Math.random() * fullPool.length)];
         return { ...rand, uniqueId: Date.now() + i }; 
@@ -58,15 +55,15 @@ export default function Dashboard() {
     }
   }, [questionQueue.length]);
 
-  // 3. Gestion de la réponse
+  // 3. Gestion Réponse
   const handleAnswer = async (ans, currentQuestion) => {
-    // UI Optimiste : On passe à la suivante
+    // UI Optimiste : passer à la suivante
     const nextQueue = questionQueue.slice(1);
     setQuestionQueue(nextQueue);
 
     try {
         const submitTask = httpsCallable(functions, 'submitTask');
-        // IMPORTANT : On envoie la réponse ET toute la config de la question (pour targetField, reward...)
+        // On envoie la réponse et les infos de la question (pour vérifier si c'est un questionnaire ou random)
         const result = await submitTask({ 
             answer: ans, 
             questionData: currentQuestion 
@@ -76,104 +73,128 @@ export default function Dashboard() {
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 2000);
         } else {
-            setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
+            // Si quota atteint pour les questions random
+            setModalInfo({ open: true, title: "LIMITE ATTEINTE", msg: result.data.message });
         }
     } catch (error) {
         console.error(error);
-        setModalInfo({ open: true, title: "ERREUR", msg: "Connexion serveur échouée." });
+        setModalInfo({ open: true, title: "ERREUR", msg: "Erreur de transmission." });
     }
   };
 
-  // 4. Retrait
+  // 4. Gestion Retrait (Logique > 2000$)
   const handleWithdraw = async () => {
-    if (!user || user.economy.enAttente <= 0) return;
+    // Sécurité Front
+    if (!user || user.economy.enAttente < 2000) return;
+
     try {
+      // Création de la demande Admin
       await addDoc(collection(db, "withdrawals"), {
         userId: auth.currentUser.uid,
         nomComplet: `${user.info.prenom} ${user.info.nom}`,
-        montant: user.economy.enAttente,
+        banque: user.info.banque,
+        telephone: user.info.telephone,
+        montant: user.economy.enAttente, // On fige le montant demandé
         date: new Date().toISOString(),
         statut: 'pending'
       });
+      
+      // Historique local
       await addDoc(collection(db, "users", auth.currentUser.uid, "history"), {
-        type: 'withdraw', label: 'Retrait initié', montant: -user.economy.enAttente, date: new Date().toISOString()
+        type: 'withdraw', label: 'Demande de virement', montant: -user.economy.enAttente, date: new Date().toISOString()
       });
-      await updateDoc(doc(db, "users", auth.currentUser.uid), { "economy.statutRetrait": "waiting" });
-      setModalInfo({ open: true, title: "VIREMENT INITIÉ", msg: "Demande en cours." });
+
+      // Reset Solde local + Statut Waiting
+      // Note: Le backend pourrait faire ça pour plus de sécu, mais on le fait ici pour l'UI immédiate
+      await updateDoc(doc(db, "users", auth.currentUser.uid), { 
+          "economy.statutRetrait": "waiting",
+          "economy.enAttente": 0 // On remet à zéro visuellement (l'argent est "bloqué" dans la demande)
+      });
+      
+      setModalInfo({ open: true, title: "DEMANDE ENVOYÉE", msg: "Virement en attente de validation admin." });
     } catch (e) { console.error(e); }
   };
 
-  const handleSaveProfile = async (newInfo) => {
-    await updateDoc(doc(db, "users", auth.currentUser.uid), { info: newInfo });
-    setIsEditOpen(false);
-  };
-
-  if (!user) return <div className="flex-center">Chargement...</div>;
+  if (!user) return <div className="flex-center">Chargement système...</div>;
 
   return (
     <div className="container">
       {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={200} />}
 
-      <UserProfileHeader user={user} onEdit={() => setIsEditOpen(true)} onLogout={() => { signOut(auth); navigate('/'); }} />
+      <UserProfileHeader user={user} onLogout={() => { signOut(auth); navigate('/'); }} />
 
       <div className="grid-2" style={{ alignItems: 'start' }}>
         
-        {/* COLONNE GAUCHE : CARTE ACTIVE */}
+        {/* GAUCHE : LE JEU (Swipe) */}
         <div>
            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
              <h3 className="text-cyan">TÂCHE EN COURS</h3>
-             <span className="text-muted">EN FILE : {questionQueue.length}</span>
+             <span className="text-muted">FILE : {questionQueue.length}</span>
            </div>
            {questionQueue.length > 0 ? (
              <GameCard user={user} question={questionQueue[0]} onAnswer={handleAnswer} />
            ) : (
              <div className="pro-card text-center" style={{ padding: '3rem' }}>
-               <h2 className="text-muted">FLUX VIDE</h2>
-               <button className="btn-main mt-4" onClick={() => window.location.reload()}>RECHARGER</button>
+               <h2 className="text-muted">FILE VIDE</h2>
+               <button className="btn-main mt-4" onClick={() => window.location.reload()}>ACTUALISER</button>
              </div>
            )}
         </div>
 
-        {/* COLONNE DROITE : INFO & WALLET */}
+        {/* DROITE : PORTEFEUILLE & INFO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="pro-card">
-               <h3 className="text-cyan">PORTEFEUILLE</h3>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end' }}>
-                 <h2 style={{ fontSize: '2.5rem', margin: 0 }}>{user.economy.enAttente} $</h2>
+            
+            {/* CARTE PORTEFEUILLE SPECIALE */}
+            <div className="pro-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+               <h3 className="text-cyan">ARGENT EN ATTENTE</h3>
+               
+               <div style={{ marginTop: '1rem' }}>
+                 <h2 style={{ fontSize: '3rem', margin: 0, letterSpacing: '2px' }}>
+                    {user.economy.enAttente} $
+                 </h2>
+                 <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '5px' }}>
+                    Seuil minimum : 2000 $
+                 </p>
+               </div>
+
+               <div style={{ marginTop: '1.5rem' }}>
                  {user.economy.statutRetrait === 'waiting' ? (
-                   <span style={{ color: 'var(--warning)', border: '1px solid var(--warning)', padding: '5px' }}>EN COURS</span>
+                   <button className="btn-warning w-full" disabled style={{ opacity: 1, cursor: 'wait', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                      <span className="loader">⌛</span> EN ATTENTE DE PAIEMENT
+                   </button>
                  ) : (
-                   <button className="btn-main" style={{ width: 'auto' }} onClick={handleWithdraw} disabled={user.economy.enAttente <= 0}>SÉCURISER</button>
+                   <button 
+                     className="btn-main w-full" 
+                     onClick={handleWithdraw}
+                     disabled={user.economy.enAttente < 2000}
+                     style={{ 
+                        filter: user.economy.enAttente < 2000 ? 'grayscale(1) opacity(0.5)' : 'none',
+                        cursor: user.economy.enAttente < 2000 ? 'not-allowed' : 'pointer'
+                     }}
+                   >
+                     {user.economy.enAttente < 2000 ? `IL MANQUE ${2000 - user.economy.enAttente} $` : "RÉCUPÉRER MON ARGENT"}
+                   </button>
                  )}
                </div>
             </div>
 
-            <div className="pro-card" style={{ minHeight: '300px' }}>
+            {/* LISTE DES QUESTIONNAIRES DISPO */}
+            <div className="pro-card">
                 <h3 className="text-muted mb-4">À VENIR</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {questionQueue.slice(1).map((q, index) => (
-                        <div key={q.uniqueId} style={{ 
-                            padding: '12px', background: 'rgba(255,255,255,0.02)', 
-                            borderLeft: q.targetField ? '3px solid var(--warning)' : '3px solid var(--text-muted)',
-                            display: 'flex', justifyContent: 'space-between'
-                        }}>
-                            <div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>{q.tag || "TÂCHE"}</div>
-                                <div style={{ fontSize: '0.9rem' }}>{q.targetField ? "Mise à jour Profil" : "Enquête"}</div>
-                            </div>
-                            <div>➜</div>
-                        </div>
-                    ))}
-                    {questionQueue.length <= 1 && <p className="text-muted text-center">Aucune autre tâche.</p>}
-                </div>
+                {questionQueue.slice(1).map((q, i) => (
+                    <div key={q.uniqueId} style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
+                        <span style={{ color: 'var(--primary)', marginRight: '10px' }}>#{i+2}</span>
+                        {q.text.substring(0, 30)}...
+                    </div>
+                ))}
             </div>
+
         </div>
       </div>
 
       <HistorySection history={history} />
 
       {modalInfo.open && <InfoModal title={modalInfo.title} msg={modalInfo.msg} onClose={() => setModalInfo({ ...modalInfo, open: false })} />}
-      {isEditOpen && <EditProfileModal user={user} onClose={() => setIsEditOpen(false)} onSave={handleSaveProfile} />}
     </div>
   );
 }

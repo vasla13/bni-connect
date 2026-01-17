@@ -1,76 +1,43 @@
-import logo from '../assets/logo.png';
-import { LogOut, UserPen, Trophy } from 'lucide-react'; // Import des icônes
-
 export default function UserProfileHeader({ user, onEdit, onLogout }) {
-  
-  // Logique des Grades
-  const totalGagne = user.economy.gagneTotal || 0;
-  let grade = { label: "Stagiaire", color: "#6c757d" }; // Gris
-  if (totalGagne >= 500) grade = { label: "Cadre Supérieur", color: "#8a2be2" }; // Violet
-  if (totalGagne >= 5000) grade = { label: "PDG", color: "#00d2ff" }; // Cyan
+  const getInitials = () => {
+    const p = user.info.prenom ? user.info.prenom[0] : "";
+    const n = user.info.nom ? user.info.nom[0] : "";
+    return (p + n).toUpperCase() || "U";
+  };
 
   return (
-    <div className="pro-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-      
-      {/* GAUCHE : Logo + Infos + Grade */}
+    <header style={{ 
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+        marginBottom: '2rem', padding: '1.5rem', 
+        background: 'var(--glass-bg)', border: 'var(--glass-border)',
+        borderRadius: 'var(--radius)', backdropFilter: 'blur(10px)'
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        <img 
-            src={logo} 
-            alt="Logo BNI" 
-            style={{ height: '60px', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '20px' }} 
-        />
         
-        <div style={{ position: 'relative' }}>
-          <img 
-            src={user.info.avatar} 
-            style={{ width: '70px', height: '70px', borderRadius: '50%', border: `2px solid ${grade.color}`, objectFit: 'cover' }} 
-            alt="Avatar" 
-          />
-          {/* Petit badge trophée */}
-          <div style={{ position: 'absolute', bottom: -5, right: -5, background: grade.color, borderRadius: '50%', padding: '4px' }}>
-            <Trophy size={14} color="white" />
-          </div>
+        {/* AVATAR */}
+        <div style={{ 
+            width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', 
+            background: 'var(--secondary)', display: 'flex', justifyContent: 'center', alignItems: 'center',
+            border: '2px solid var(--primary)', boxShadow: '0 0 15px var(--primary-glow)'
+        }}>
+          {user.info.photoUrl && user.info.photoUrl.trim() !== "" ? (
+            <img src={user.info.photoUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', fontFamily: 'Rajdhani' }}>{getInitials()}</span>
+          )}
         </div>
 
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ margin: 0 }}>{user.info.prenom} {user.info.nom}</h2>
-            {/* Badge de Grade */}
-            <span style={{ 
-              fontSize: '0.7rem', 
-              background: grade.color, 
-              padding: '2px 8px', 
-              borderRadius: '12px', 
-              fontWeight: 'bold',
-              textTransform: 'uppercase'
-            }}>
-              {grade.label}
-            </span>
-          </div>
-          
-          <button 
-            className="btn-secondary" 
-            style={{ padding: '5px 10px', fontSize: '0.8rem', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }} 
-            onClick={onEdit}
-          >
-            <UserPen size={14} /> Modifier Profil
-          </button>
+          <h2 style={{ margin: 0, fontSize: '1.4rem', lineHeight: '1' }}>{user.info.prenom} {user.info.nom}</h2>
+          <span className="text-cyan" style={{ fontSize: '0.8rem', letterSpacing: '1px' }}>MATRICULE ACTIF</span>
         </div>
       </div>
-      
-      {/* DROITE : Argent + Déconnexion */}
-      <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: '1.8rem', color: 'var(--success)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-          {user.economy.gagneTotal} $
-        </div>
-        <button 
-            className="btn-danger" 
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '5px' }} 
-            onClick={onLogout}
-        >
-          <LogOut size={14} /> DÉCONNEXION
-        </button>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        {/* LE BOUTON EST DE RETOUR ICI */}
+        <button className="btn-secondary" onClick={onEdit}>ÉDITER DOSSIER</button>
+        <button className="btn-danger" onClick={onLogout}>DÉCONNEXION</button>
       </div>
-    </div>
+    </header>
   );
 }
