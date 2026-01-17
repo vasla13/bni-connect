@@ -1,40 +1,54 @@
 import { useEffect, useState } from 'react';
-import { auth, db, functions } from '../firebase'; // Assurez-vous d'avoir ajouté 'functions' dans firebase.js
-import { doc, onSnapshot, updateDoc, addDoc, collection, arrayUnion } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions'; // Import pour la Cloud Function
+import { auth, db, functions } from '../firebase';
+import { doc, onSnapshot, updateDoc, addDoc, collection, arrayUnion, query, orderBy, limit } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { RANDOM_QUESTIONS } from '../data/questions';
+import { useWindowSize } from 'react-use';
+import Confetti from 'react-confetti';
 
-// Import des composants (assurez-vous de les avoir créés comme vu précédemment)
+// Import des composants
 import UserProfileHeader from '../components/UserProfileHeader';
 import GameCard from '../components/GameCard';
 import WalletCard from '../components/WalletCard';
+import HistorySection from '../components/HistorySection';
+import EditProfileModal from '../components/EditProfileModal';
+import InfoModal from '../components/InfoModal';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { width, height } = useWindowSize();
+  
+  // Données
   const [user, setUser] = useState(null);
+  const [history, setHistory] = useState([]);
   const [question, setQuestion] = useState(null);
   
-  // États UI
-  const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [infoModal, setInfoModal] = useState({ open: false, title: '', msg: '' });
+  // États d'interface
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [modalInfo, setModalInfo] = useState({ open: false, title: '', msg: '' });
 
-  // Écoute du profil utilisateur en temps réel
+  // 1. Chargement des données
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
-    const unsub = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
-      if (doc.exists()) {
-        setUser(doc.data());
-        setEditForm(doc.data().info || {});
-      }
+    
+    // Profil
+    const unsubUser = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
+      if (doc.exists()) setUser(doc.data());
     });
-    return () => unsub();
+
+    // Historique
+    const q = query(collection(db, "users", auth.currentUser.uid, "history"), orderBy("date", "desc"), limit(5));
+    const unsubHistory = onSnapshot(q, (snapshot) => {
+      setHistory(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubUser(); unsubHistory(); };
   }, [navigate]);
 
-  // --- LOGIQUE MÉTIER ---
-
+  // 2. Logique du Jeu
   const pickQuestion = () => {
     const today = new Date().toLocaleDateString('fr-FR');
     const currentCount = (user.game.lastQuestionDate === today) ? user.game.dailyCount : 0;
@@ -43,138 +57,97 @@ export default function Dashboard() {
   };
 
   const handleAnswer = async (ans) => {
-    // 1. Sauvegarde locale des réponses (Analytique / Sondage) - Reste côté client
     if (question.sensitive) {
-      try {
-        await updateDoc(doc(db, "users", auth.currentUser.uid), {
-           "game.answers": arrayUnion({ 
-             question: question.text, reponse: ans, tag: question.tag || "SANS TAG", date: new Date().toISOString() 
-           })
-        });
-      } catch (e) { console.error("Erreur sauvegarde réponse", e); }
+      updateDoc(doc(db, "users", auth.currentUser.uid), {
+         "game.answers": arrayUnion({ question: question.text, reponse: ans, tag: question.tag || "SANS TAG", date: new Date().toISOString() })
+      }).catch(console.error);
     }
 
-    // 2. VALIDATION ET PAIEMENT SÉCURISÉ (Via Cloud Function)
     try {
-        setQuestion(null); // Fermeture immédiate de la question pour l'UX
-        
-        // Appel à la fonction serveur 'submitTask'
+        setQuestion(null);
         const submitTask = httpsCallable(functions, 'submitTask');
-        
-        // On attend la réponse sécurisée du serveur
         const result = await submitTask({ answer: ans });
-        const data = result.data;
-
-        if (data.success) {
-            setInfoModal({
-                open: true,
-                title: "TÂCHE TERMINÉE",
-                msg: `Réponse validée par le serveur. +${data.reward}$ crédités.`
-            });
+        
+        if (result.data.success) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 5000);
+            setModalInfo({ open: true, title: "TÂCHE VALIDÉE", msg: `Excellent ! +${result.data.reward}$ ajoutés.` });
         } else {
-            setInfoModal({
-                open: true,
-                title: "QUOTA ATTEINT",
-                msg: data.message || "Vous avez atteint votre limite journalière."
-            });
+            setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
         }
-
     } catch (error) {
-        console.error("Erreur Cloud Function:", error);
-        setInfoModal({
-            open: true,
-            title: "ERREUR",
-            msg: "Une erreur est survenue lors de la validation serveur. Vérifiez votre connexion."
-        });
+        console.error(error);
+        setModalInfo({ open: true, title: "ERREUR", msg: "Problème de connexion serveur." });
     }
   };
 
+  // 3. Logique Portefeuille & Profil
   const handleWithdraw = async () => {
-    if (user.economy.enAttente < 2000) return;
     try {
       await addDoc(collection(db, "withdrawals"), {
         userId: auth.currentUser.uid,
         nomComplet: `${user.info.prenom} ${user.info.nom}`,
         montant: user.economy.enAttente,
-        compteBancaire: user.info.banque,
-        tel: user.info.tel,
         date: new Date().toISOString()
       });
+      // Ajout historique local pour feedback immédiat
+      await addDoc(collection(db, "users", auth.currentUser.uid, "history"), {
+        type: 'withdraw', label: 'Retrait vers banque', montant: -user.economy.enAttente, date: new Date().toISOString()
+      });
       await updateDoc(doc(db, "users", auth.currentUser.uid), { "economy.statutRetrait": "waiting" });
-      setInfoModal({ open: true, title: "VIREMENT INITIÉ", msg: "Demande transmise à l'administration." });
+      setModalInfo({ open: true, title: "VIREMENT INITIÉ", msg: "Demande en cours de traitement." });
     } catch (e) { console.error(e); }
   };
 
-  const saveProfile = async () => {
-    await updateDoc(doc(db, "users", auth.currentUser.uid), { info: editForm });
-    setEditOpen(false);
+  const handleSaveProfile = async (newInfo) => {
+    await updateDoc(doc(db, "users", auth.currentUser.uid), { info: newInfo });
+    setIsEditOpen(false);
   };
 
-  const handleLogout = () => {
-    signOut(auth);
-    navigate('/');
-  };
-
-  if (!user) return <div className="flex-center">Chargement BNI...</div>;
+  if (!user) return <div className="flex-center">Chargement...</div>;
 
   return (
     <div className="container">
-      
-      {/* 1. Header Profil (Inclut le Logo) */}
+      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={300} />}
+
       <UserProfileHeader 
         user={user} 
-        onEdit={() => setEditOpen(true)} 
-        onLogout={handleLogout} 
+        onEdit={() => setIsEditOpen(true)} 
+        onLogout={() => { signOut(auth); navigate('/'); }} 
       />
 
       <div className="grid-2">
-        {/* 2. Carte Jeu (Quiz) */}
         <GameCard 
-            user={user}
-            question={question}
-            onPickQuestion={pickQuestion}
-            onAnswer={handleAnswer}
+            user={user} 
+            question={question} 
+            onPickQuestion={pickQuestion} 
+            onAnswer={handleAnswer} 
         />
-
-        {/* 3. Carte Portefeuille (Retraits) */}
         <WalletCard 
-            balance={user.economy.enAttente}
-            status={user.economy.statutRetrait}
-            onWithdraw={handleWithdraw}
+            balance={user.economy.enAttente} 
+            status={user.economy.statutRetrait} 
+            onWithdraw={handleWithdraw} 
         />
       </div>
 
-      {/* --- MODALES --- */}
-      
-      {/* Modal d'information */}
-      {infoModal.open && (
-        <div className="overlay">
-          <div className="modal-box">
-            <h3 className="text-cyan">{infoModal.title}</h3>
-            <p style={{ margin: '20px 0' }}>{infoModal.msg}</p>
-            <button className="btn-main" onClick={() => setInfoModal({ ...infoModal, open: false })}>CONFIRMER</button>
-          </div>
-        </div>
+      <HistorySection history={history} />
+
+      {/* Modales découplées */}
+      {modalInfo.open && (
+        <InfoModal 
+            title={modalInfo.title} 
+            msg={modalInfo.msg} 
+            onClose={() => setModalInfo({ ...modalInfo, open: false })} 
+        />
       )}
 
-      {/* Modal d'édition de profil */}
-      {editOpen && (
-        <div className="overlay">
-          <div className="modal-box" style={{ textAlign: 'left' }}>
-            <h3 className="text-cyan" style={{ textAlign: 'center' }}>MISE À JOUR DONNÉES</h3>
-            <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-              <div className="input-group"><label>Avatar (URL)</label><input value={editForm.avatar} onChange={e => setEditForm({...editForm, avatar: e.target.value})} /></div>
-              <div className="input-group"><label>Téléphone</label><input value={editForm.tel} onChange={e => setEditForm({...editForm, tel: e.target.value})} /></div>
-              <div className="input-group"><label>Métier</label><input value={editForm.metier} onChange={e => setEditForm({...editForm, metier: e.target.value})} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button className="btn-main" onClick={saveProfile}>SAUVEGARDER</button>
-              <button className="btn-danger" onClick={() => setEditOpen(false)}>ANNULER</button>
-            </div>
-          </div>
-        </div>
+      {isEditOpen && (
+        <EditProfileModal 
+            user={user} 
+            onClose={() => setIsEditOpen(false)} 
+            onSave={handleSaveProfile} 
+        />
       )}
-
     </div>
   );
 }
