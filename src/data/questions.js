@@ -1,47 +1,7 @@
-// src/data/questions.js
-
 export const RANDOM_QUESTIONS = [
-  {
-    id: 1,
-    text: "Quelle est votre opinion sur l'augmentation des implants cybernétiques au travail ?",
-    type: "random",
-    reward: 50,
-    sensitive: true,
-    tag: "ETHIQUE",
-    options: ["Favorable (Productivité)", "Neutre", "Contre (Humanité)"]
-  },
-  {
-    id: 2,
-    text: "Avez-vous remarqué des activités suspectes dans le secteur B4 cette semaine ?",
-    type: "random",
-    reward: 50,
-    sensitive: true,
-    tag: "SECURITE",
-    options: ["Oui, souvent", "Non, rien à signaler", "Je préfère ne pas répondre"]
-  },
-  {
-    id: 3,
-    text: "Évaluation de votre niveau de stress actuel (1-5) :",
-    type: "random",
-    reward: 50,
-    sensitive: false,
-    options: ["1 - Calme", "3 - Modéré", "5 - Critique"]
-  },
-  {
-    id: 4,
-    text: "Consommez-vous des produits de la marque 'Synthetix' ?",
-    type: "random",
-    reward: 50,
-    sensitive: true,
-    tag: null, // Sensible sans tag
-    options: ["Quotidiennement", "Rarement", "Jamais"]
-  },
-  {
-    id: 5,
-    text: "Etes-vous satisfait des services de nettoyage robotisés ?",
-    type: "random",
-    reward: 50,
-    sensitive: false,
-    options: ["Oui", "Non"]
-  }
+  { id: 1, text: "Avez-vous remarqué des interférences sur le réseau interne ?", type: "random", reward: 50, sensitive: true, tag: "SECURITE", options: ["Oui, fréquentes", "Non, R.A.S.", "Je ne sais pas"] },
+  { id: 2, text: "Niveau de stress actuel au poste de travail :", type: "random", reward: 50, sensitive: false, options: ["Faible", "Modéré", "Critique"] },
+  { id: 3, text: "Avez-vous été approché par des concurrents (Synthetix) ?", type: "random", reward: 50, sensitive: true, tag: "LOYAUTE", options: ["Jamais", "Une fois", "Plusieurs fois"] },
+  { id: 4, text: "Que pensez-vous des nouveaux augmentés du secteur 4 ?", type: "random", reward: 50, sensitive: true, tag: "OPINION", options: ["Favorables", "Méfiant", "Dangereux"] },
+  { id: 5, text: "Maintenance des drones de nettoyage :", type: "random", reward: 50, sensitive: false, options: ["Satisfaisante", "À revoir"] }
 ];

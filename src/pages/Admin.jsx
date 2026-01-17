@@ -1,205 +1,151 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, runTransaction, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 
 export default function Admin() {
-  const [tab, setTab] = useState('paiements');
-  const [withdrawals, setWithdrawals] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  
-  // --- NOUVEAU : États pour Popups/Toasts ---
-  const [confirmModal, setConfirmModal] = useState({ open: false, item: null }); // Pour stocker l'objet à valider
-  const [toast, setToast] = useState(null); // Pour le message temporaire
-
   const navigate = useNavigate();
+  const [tab, setTab] = useState('pay');
+  const [withdrawals, setW] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelUser] = useState(null);
+  
+  // États Popups
+  const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ open: false, item: null });
 
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
-    const unsubPay = onSnapshot(collection(db, "withdrawals"), (s) => setWithdrawals(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubUsers = onSnapshot(collection(db, "users"), (s) => setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() }))));
-    return () => { unsubPay(); unsubUsers(); };
+    const u1 = onSnapshot(collection(db, "withdrawals"), s => setW(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const u2 = onSnapshot(collection(db, "users"), s => setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() }))));
+    return () => { u1(); u2(); };
   }, [navigate]);
 
-  // --- LOGIQUE TOAST (Notification temporaire) ---
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000); // Disparait après 3 sec
+  // Logique Copier (Toast)
+  const copy = (txt) => {
+    navigator.clipboard.writeText(txt);
+    setToast("Donnée copiée dans le presse-papier");
+    setTimeout(() => setToast(null), 2500);
   };
 
-  const copyToClip = (text, label) => {
-    navigator.clipboard.writeText(text);
-    showToast(`${label} copié dans le presse-papier`);
-  };
-
-  // --- LOGIQUE CONFIRMATION (Remplace window.confirm) ---
-  const requestValidation = (item) => {
-    setConfirmModal({ open: true, item: item });
-  };
-
-  const executePayment = async () => {
+  // Logique Paiement
+  const executePay = async () => {
     const w = confirmModal.item;
     if (!w) return;
-
     try {
       await runTransaction(db, async (t) => {
-        const userRef = doc(db, "users", w.userId);
-        const userDoc = await t.get(userRef);
-        if(!userDoc.exists()) throw "User missing";
-        
-        const currentData = userDoc.data();
-        const newEnAttente = Math.max(0, (currentData.economy.enAttente || 0) - w.montant);
-        
-        t.update(userRef, {
-          "economy.enAttente": newEnAttente,
-          "economy.gagneTotal": (currentData.economy.gagneTotal || 0) + w.montant,
-          "economy.statutRetrait": "aucun"
+        const uRef = doc(db, "users", w.userId);
+        const uDoc = await t.get(uRef);
+        if (!uDoc.exists()) return;
+        const newAtt = Math.max(0, uDoc.data().economy.enAttente - w.montant);
+        t.update(uRef, { 
+          "economy.enAttente": newAtt, 
+          "economy.gagneTotal": uDoc.data().economy.gagneTotal + w.montant, 
+          "economy.statutRetrait": "aucun" 
         });
         t.delete(doc(db, "withdrawals", w.id));
       });
-      showToast(`Virement de ${w.montant}$ validé avec succès.`);
-    } catch(e) { 
-      alert(e); // Fallback erreur critique
-    } finally {
       setConfirmModal({ open: false, item: null });
+      setToast("Virement validé avec succès");
+      setTimeout(() => setToast(null), 2500);
+    } catch (e) { alert(e); }
+  };
+
+  // Logique User
+  const saveUser = async () => {
+    if (selectedUser) {
+      await updateDoc(doc(db, "users", selectedUser.uid), { info: selectedUser.info });
+      setSelUser(null);
+      setToast("Profil utilisateur mis à jour");
+      setTimeout(() => setToast(null), 2500);
     }
   };
 
-  // --- LOGIQUE USERS ---
-  const saveUserChanges = async () => {
-    if(!selectedUser) return;
-    await updateDoc(doc(db, "users", selectedUser.uid), { info: selectedUser.info });
-    showToast("Profil utilisateur sauvegardé.");
-    setSelectedUser(null);
-  };
-
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Toast Container */}
-      {toast && <div className="toast-container">ℹ {toast}</div>}
+    <div className="container">
+      {toast && <div className="toast">{toast}</div>}
 
-      <header style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-        <button className={tab === 'paiements' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('paiements')}>PAIEMENTS</button>
-        <button className={tab === 'users' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('users')}>UTILISATEURS</button>
-        <div style={{ flex: 1 }}></div>
-        <button className="btn-danger" onClick={() => navigate('/dashboard')}>QUITTER</button>
-      </header>
+      <div className="pro-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <h2 style={{ margin: 0, color: 'white' }}>SUPERVISION BNI</h2>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className={tab === 'pay' ? 'btn-main' : 'btn-secondary'} onClick={() => setTab('pay')} style={{ width: 'auto' }}>PAIEMENTS</button>
+          <button className={tab === 'users' ? 'btn-main' : 'btn-secondary'} onClick={() => setTab('users')} style={{ width: 'auto' }}>CITOYENS</button>
+          <button className="btn-danger" onClick={() => navigate('/dashboard')}>QUITTER</button>
+        </div>
+      </div>
 
-      {/* --- ONGLET PAIEMENTS --- */}
-      {tab === 'paiements' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' }}>
+      {/* TAB PAIEMENTS */}
+      {tab === 'pay' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+          {withdrawals.length === 0 && <p className="text-muted">Aucune demande en attente.</p>}
           {withdrawals.map(w => (
-            <div key={w.id} className="glass-panel" style={{ padding: '1.5rem', position: 'relative' }}>
-              <h3 className="text-cyan">{w.nomComplet}</h3>
-              <button style={{ position: 'absolute', top: 20, right: 10, fontSize: '0.7rem' }} className="btn-secondary" onClick={() => copyToClip(w.nomComplet, "Nom")}>COPIER</button>
-
-              <div style={{ margin: '1rem 0', position: 'relative' }}>
-                <small className="text-muted">BANQUE</small>
-                <div style={{ fontFamily: 'monospace' }}>{w.compteBancaire}</div>
-                <button style={{ position: 'absolute', top: 0, right: -5, padding: '2px 5px' }} className="btn-secondary" onClick={() => copyToClip(w.compteBancaire, "IBAN")}>COPIER</button>
-              </div>
-
-              <div style={{ margin: '1rem 0', position: 'relative' }}>
-                <small className="text-muted">TÉLÉPHONE</small>
-                <div>{w.tel || 'N/A'}</div>
-                <button style={{ position: 'absolute', top: 0, right: -5, padding: '2px 5px' }} className="btn-secondary" onClick={() => copyToClip(w.tel, "Téléphone")}>COPIER</button>
-              </div>
-
-              <div style={{ margin: '1rem 0', position: 'relative' }}>
-                <small className="text-muted">MONTANT DÛ</small>
-                <div style={{ fontSize: '1.5rem', color: 'orange' }}>{w.montant} $</div>
-                <button style={{ position: 'absolute', top: 0, right: -5, padding: '2px 5px' }} className="btn-secondary" onClick={() => copyToClip(w.montant, "Montant")}>COPIER</button>
-              </div>
-
-              {/* Bouton qui ouvre la modale au lieu de confirm() */}
-              <button className="btn-primary w-full" onClick={() => requestValidation(w)}>AUTORISER VIREMENT</button>
+            <div key={w.id} className="pro-card" style={{ position: 'relative' }}>
+              <h3 className="text-cyan">{w.nomComplet} <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.nomComplet)}>COPIER</button></h3>
+              <div style={{ margin: '10px 0' }}>IBAN: <strong style={{ fontFamily: 'monospace' }}>{w.compteBancaire}</strong> <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.compteBancaire)}>COPIER</button></div>
+              <div style={{ margin: '10px 0' }}>TEL: {w.tel} <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.tel)}>COPIER</button></div>
+              <div style={{ fontSize: '1.5rem', color: 'var(--warning)', margin: '15px 0' }}>{w.montant} $ <button className="btn-secondary" style={{ fontSize: '0.6rem', padding: '2px 6px' }} onClick={() => copy(w.montant)}>COPIER</button></div>
+              <button className="btn-main" onClick={() => setConfirmModal({ open: true, item: w })}>VALIDER VIREMENT</button>
             </div>
           ))}
-          {withdrawals.length === 0 && <p className="text-muted">Aucune demande en attente.</p>}
         </div>
       )}
 
-      {/* --- ONGLET UTILISATEURS --- */}
-      {tab === 'users' && (
-        <div>
-          {!selectedUser ? (
-            <div className="glass-panel">
-              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={{padding:'10px'}}>Nom</th><th style={{padding:'10px'}}>Métier</th><th style={{padding:'10px'}}>Action</th></tr></thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u.uid} style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                      <td style={{padding:'10px'}}>{u.info.prenom} {u.info.nom}</td>
-                      <td style={{padding:'10px'}}>{u.info.metier}</td>
-                      <td style={{padding:'10px'}}>
-                        <button className="btn-secondary" onClick={() => setSelectedUser(u)}>GERER</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="glass-panel" style={{ padding: '2rem' }}>
-              <button className="btn-secondary" style={{ marginBottom: '1rem' }} onClick={() => setSelectedUser(null)}>← RETOUR LISTE</button>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                <div>
-                   <h3 className="text-cyan">INFORMATIONS CIVILES</h3>
-                   <div style={{ display: 'grid', gap: '10px' }}>
-                     <label>Avatar URL</label> <input value={selectedUser.info.avatar} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, avatar: e.target.value}})} />
-                     <label>Prénom</label> <input value={selectedUser.info.prenom} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, prenom: e.target.value}})} />
-                     <label>Nom</label> <input value={selectedUser.info.nom} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, nom: e.target.value}})} />
-                     <label>Tel</label> <input value={selectedUser.info.tel} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, tel: e.target.value}})} />
-                     <label>Date Naissance</label> <input value={selectedUser.info.dob} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, dob: e.target.value}})} />
-                     <div className="glass-panel" style={{ padding: '10px', marginTop: '10px' }}>
-                       <label>Sexe</label> <input value={selectedUser.info.sexe} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, sexe: e.target.value}})} />
-                       <label>Peau</label> <input value={selectedUser.info.peau} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, peau: e.target.value}})} />
-                       <label>Cheveux</label> <input value={selectedUser.info.cheveux} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, cheveux: e.target.value}})} />
-                       <label>Métier</label> <input value={selectedUser.info.metier} onChange={e => setSelectedUser({...selectedUser, info: {...selectedUser.info, metier: e.target.value}})} />
-                     </div>
-                     <button className="btn-primary" style={{ marginTop: '10px' }} onClick={saveUserChanges}>SAUVEGARDER MODIFICATIONS</button>
-                   </div>
-                </div>
-                <div>
-                   <h3 className="text-danger">DOSSIER SENSIBLE</h3>
-                   <h4 className="text-muted">FICHÉES (TAGS)</h4>
-                   {selectedUser.game?.answers?.filter(a => a.tag && a.tag !== "SANS TAG").map((a, i) => (
-                     <div key={i} style={{ background: 'rgba(255, 42, 42, 0.1)', border: '1px solid var(--danger)', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>
-                       <strong style={{ color: 'var(--danger)' }}>[{a.tag}]</strong> : <span style={{ color: 'white' }}>{a.reponse}</span>
-                       <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Q: {a.question}</div>
-                     </div>
-                   ))}
-                   <h4 className="text-muted" style={{ marginTop: '2rem' }}>AUTRES RÉPONSES</h4>
-                   {selectedUser.game?.answers?.filter(a => !a.tag || a.tag === "SANS TAG").map((a, i) => (
-                     <div key={i} style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                       <div>{a.reponse}</div>
-                       <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>{a.question}</div>
-                     </div>
-                   ))}
-                </div>
-              </div>
-            </div>
-          )}
+      {/* TAB USERS */}
+      {tab === 'users' && !selectedUser && (
+        <div className="pro-card">
+          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}><th style={{ padding: '10px' }}>NOM</th><th>MÉTIER</th><th>ACTION</th></tr></thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '10px' }}>{u.info.prenom} {u.info.nom}</td>
+                  <td>{u.info.metier}</td>
+                  <td><button className="btn-secondary" onClick={() => setSelUser(u)}>GÉRER</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* --- MODALE DE CONFIRMATION DE PAIEMENT --- */}
-      {confirmModal.open && confirmModal.item && (
-        <div className="modal-overlay">
-          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '90%', textAlign: 'center', border: '1px solid var(--primary)' }}>
-            <h3 className="text-cyan">CONFIRMATION REQUISE</h3>
-            <p className="text-muted" style={{ margin: '1.5rem 0' }}>
-              Autoriser le transfert de <strong>{confirmModal.item.montant} $</strong> vers le compte de {confirmModal.item.nomComplet} ?
-            </p>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-               <button className="btn-primary w-full" onClick={executePayment}>OUI, VALIDER</button>
-               <button className="btn-danger w-full" onClick={() => setConfirmModal({ open: false, item: null })}>ANNULER</button>
+      {/* DETAIL USER */}
+      {tab === 'users' && selectedUser && (
+        <div className="pro-card">
+          <button className="btn-secondary" onClick={() => setSelUser(null)}>← RETOUR LISTE</button>
+          <div className="grid-2" style={{ marginTop: '20px' }}>
+            <div>
+              <h3 className="text-cyan">INFOS CIVILES</h3>
+              <div className="input-group"><label>Prénom</label><input value={selectedUser.info.prenom} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, prenom: e.target.value } })} /></div>
+              <div className="input-group"><label>Nom</label><input value={selectedUser.info.nom} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, nom: e.target.value } })} /></div>
+              <div className="input-group"><label>Métier</label><input value={selectedUser.info.metier} onChange={e => setSelUser({ ...selectedUser, info: { ...selectedUser.info, metier: e.target.value } })} /></div>
+              <button className="btn-main" style={{ marginTop: '10px' }} onClick={saveUser}>SAUVEGARDER MODIFICATIONS</button>
+            </div>
+            <div>
+              <h3 style={{ color: 'var(--danger)' }}>DOSSIER SENSIBLE</h3>
+              {selectedUser.game?.answers?.filter(a => a.tag && a.tag !== "SANS TAG").map((a, i) => (
+                <div key={i} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>
+                  <strong style={{ color: 'var(--danger)' }}>[{a.tag}]</strong> {a.reponse}
+                </div>
+              ))}
+              {(!selectedUser.game?.answers || selectedUser.game.answers.length === 0) && <p className="text-muted">Aucune donnée signalée.</p>}
             </div>
           </div>
         </div>
       )}
 
+      {/* MODALE CONFIRMATION PAIEMENT */}
+      {confirmModal.open && (
+        <div className="overlay">
+          <div className="modal-box">
+            <h3 className="text-cyan">CONFIRMATION</h3>
+            <p>Valider le virement de <strong>{confirmModal.item.montant}$</strong> pour {confirmModal.item.nomComplet} ?</p>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button className="btn-main" onClick={executePay}>OUI, PAYER</button>
+              <button className="btn-danger" onClick={() => setConfirmModal({ open: false, item: null })}>ANNULER</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
