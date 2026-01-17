@@ -1,0 +1,134 @@
+:root {
+  /* RETOUR AU BLEU BNI LUMINEUX */
+  --bg-core: #003366;       /* Bleu BNI sombre */
+  --bg-gradient: radial-gradient(circle at top center, #00529b 0%, #002244 100%);
+  
+  --card-bg: rgba(0, 50, 100, 0.6); /* Fond des cartes plus clair */
+  --card-border: 1px solid rgba(255, 255, 255, 0.2);
+  
+  --input-bg: rgba(255, 255, 255, 0.1); /* Fond des champs CLAIR */
+  --input-border: 1px solid rgba(255, 255, 255, 0.3);
+  
+  --primary: #00c853;       /* Vert pour les actions (Paiement) */
+  --highlight: #00b4d8;     /* Bleu cyan pour les titres */
+  
+  --text-main: #ffffff;
+  --text-muted: #dbeafe;    /* Blanc cassé très lisible */
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Roboto', sans-serif;
+  color: var(--text-main);
+  background: var(--bg-gradient);
+  background-attachment: fixed; /* Le fond reste fixe */
+  min-height: 100vh;
+  font-size: 16px; /* Taille de base augmentée */
+}
+
+/* --- CONTENEURS --- */
+.auth-wrapper {
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  min-height: 100vh; padding: 20px;
+}
+
+.dash-layout {
+  max-width: 1200px; margin: 0 auto; padding: 40px 20px; width: 100%;
+}
+
+/* --- CARTES (Plus grandes et visibles) --- */
+.pro-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: var(--card-border);
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+  width: 100%;
+  margin-bottom: 25px;
+}
+
+/* Pour le login : largeur fixe mais confortable */
+.pro-card.auth { max-width: 500px; }
+/* Pour l'inscription : plus large */
+.pro-card.wide { max-width: 900px; }
+
+/* --- INPUTS (LISIBLES) --- */
+.input-group { margin-bottom: 25px; }
+
+label {
+  display: block; font-size: 0.9rem; font-weight: 600;
+  color: var(--highlight); margin-bottom: 8px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+input, select {
+  width: 100%; padding: 15px;
+  background: var(--input-bg); /* Fond semi-transparent clair */
+  border: var(--input-border);
+  border-radius: 8px;
+  color: white; font-size: 1.1rem; /* Texte plus gros */
+  outline: none; transition: 0.2s;
+}
+
+input:focus, select:focus {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 3px rgba(0, 180, 216, 0.3);
+}
+
+::placeholder { color: rgba(255, 255, 255, 0.5); }
+
+/* --- BOUTONS --- */
+.btn-main {
+  width: 100%; padding: 15px;
+  background: white; color: #003366;
+  border: none; border-radius: 8px;
+  font-weight: 800; font-size: 1.1rem; text-transform: uppercase;
+  cursor: pointer; transition: 0.3s;
+}
+.btn-main:hover {
+  background: var(--highlight); color: white;
+  transform: translateY(-2px);
+}
+
+.btn-action {
+  background: transparent; border: 2px solid var(--highlight); color: var(--highlight);
+  padding: 10px 20px; border-radius: 30px; font-weight: bold; cursor: pointer; transition: 0.3s;
+}
+.btn-action:hover { background: var(--highlight); color: white; }
+
+/* --- DASHBOARD SPECIFIQUE --- */
+.user-header {
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
+  padding: 25px; border-radius: 16px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 40px;
+}
+
+.stats-grid {
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Colonnes larges */
+  gap: 30px; margin-bottom: 30px;
+}
+
+.stat-box {
+  background: rgba(0, 40, 80, 0.5);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px; padding: 30px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+
+/* Barres de progression */
+.progress-bg { height: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; margin-top: 15px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--primary); transition: width 0.5s ease; }
+
+/* MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999; display: flex; justify-content: center; align-items: center; }
+.modal-content { background: #002244; padding: 30px; border-radius: 12px; border: 1px solid var(--highlight); width: 90%; max-width: 500px; }
+.modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+.btn-confirm { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+.btn-cancel { background: transparent; border: 1px solid #aaa; color: #aaa; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
