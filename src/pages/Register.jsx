@@ -1,78 +1,112 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useNavigate, Link } from 'react-router-dom';
-import bniLogo from '../assets/logo.png';
 
 export default function Register() {
-  const navigate = useNavigate();
   const [form, setForm] = useState({
-    prenom: '', nom: '', banque: '', dob: '', tel: '', mdp: '',
-    avatar: '', sexe: '', peau: '', cheveux: '', metier: ''
+    prenom: '', nom: '', mdp: '', tel: '', metier: '', banque: ''
   });
-  const [modal, setModal] = useState({ show: false, msg: '' });
-
-  const handleChange = (e) => setForm({...form, [e.target.name]: e.target.value});
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    setLoading(true);
+
+    const fakeEmail = `${form.prenom.trim().toLowerCase()}.${form.nom.trim().toLowerCase()}@bni.rp`;
+
     try {
-      const fakeEmail = `${form.prenom.trim().toLowerCase().replace(/\s/g, '')}.${form.nom.trim().toLowerCase().replace(/\s/g, '')}@bni.rp`;
       const userCred = await createUserWithEmailAndPassword(auth, fakeEmail, form.mdp);
-      await setDoc(doc(db, "users", userCred.user.uid), {
-        info: { ...form },
-        economy: { enAttente: 0, gagneTotal: 0, statutRetrait: 'aucun' },
-        game: { dailyCount: 0, lastQuestionDate: null },
-        role: 'user'
+      const user = userCred.user;
+
+      // Structure de données 2035
+      await setDoc(doc(db, "users", user.uid), {
+        info: {
+          prenom: form.prenom,
+          nom: form.nom,
+          tel: form.tel,
+          metier: form.metier,
+          banque: form.banque,
+          avatar: "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        economy: {
+          enAttente: 0,
+          gagneTotal: 0,
+          statutRetrait: 'aucun'
+        },
+        game: {
+          dailyCount: 0,
+          lastQuestionDate: new Date().toLocaleDateString('fr-FR')
+        },
+        role: 'user',
+        createdAt: new Date().toISOString()
       });
+
       navigate('/dashboard');
-    } catch (err) { setModal({ show: true, msg: err.message }); }
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'enregistrement: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="auth-wrapper">
-      {modal.show && (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <h3>Erreur</h3><p>{modal.msg}</p>
-                <button className="btn-cancel" onClick={() => setModal({show:false})}>Fermer</button>
-            </div>
-        </div>
-      )}
+    <div className="flex-center" style={{ minHeight: '100vh', padding: '20px' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '500px', padding: '2rem' }}>
+        <h2 className="text-cyan tech-font" style={{ marginBottom: '1.5rem' }}>INITIALISATION DU DOSSIER</h2>
+        
+        <form onSubmit={handleRegister} className="grid-2">
+          {/* Identité */}
+          <div style={{ gridColumn: '1 / -1' }}>
+             <label className="text-muted" style={{ fontSize: '0.7rem' }}>SECTION IDENTITÉ</label>
+             <hr style={{ borderColor: 'rgba(255,255,255,0.1)', margin: '5px 0 15px 0' }}/>
+          </div>
 
-      <div className="pro-card wide">
-        <div style={{textAlign:'center', marginBottom:'30px', borderBottom:'1px solid rgba(255,255,255,0.1)', paddingBottom:'20px'}}>
-             <img src={bniLogo} alt="BNI" style={{height:'40px'}}/>
-             <div style={{color:'#00b4d8', fontSize:'1rem', letterSpacing:'2px', marginTop:'5px', fontWeight:'bold'}}>OUVERTURE DE DOSSIER</div>
-        </div>
+          <div>
+            <input placeholder="Prénom" value={form.prenom} onChange={e => setForm({...form, prenom: e.target.value})} required />
+          </div>
+          <div>
+            <input placeholder="Nom" value={form.nom} onChange={e => setForm({...form, nom: e.target.value})} required />
+          </div>
 
-        <form onSubmit={handleRegister} style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(350px, 1fr))', gap:'40px'}}>
-            <div>
-                <h4 style={{color:'white', marginTop:0, marginBottom:'20px', borderLeft:'3px solid #00b4d8', paddingLeft:'10px'}}>IDENTITÉ</h4>
-                <div style={{display:'flex', gap:'15px'}}>
-                    <div className="input-group"><label>Prénom</label><input name="prenom" required onChange={handleChange}/></div>
-                    <div className="input-group"><label>Nom</label><input name="nom" required onChange={handleChange}/></div>
-                </div>
-                <div className="input-group"><label>Date de Naissance</label><input type="date" name="dob" required onChange={handleChange}/></div>
-                <div className="input-group"><label>Compte Bancaire</label><input name="banque" required onChange={handleChange}/></div>
-            </div>
+          {/* Contact & Job */}
+          <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+             <label className="text-muted" style={{ fontSize: '0.7rem' }}>SECTION PROFESSIONNELLE</label>
+             <hr style={{ borderColor: 'rgba(255,255,255,0.1)', margin: '5px 0 15px 0' }}/>
+          </div>
 
-            <div>
-                <h4 style={{color:'white', marginTop:0, marginBottom:'20px', borderLeft:'3px solid #00b4d8', paddingLeft:'10px'}}>SÉCURITÉ</h4>
-                <div className="input-group"><label>Téléphone</label><input name="tel" required onChange={handleChange}/></div>
-                <div className="input-group"><label>Mot de passe</label><input type="password" name="mdp" required onChange={handleChange}/></div>
-                <div className="input-group"><label>Métier</label><input name="metier" onChange={handleChange}/></div>
-                <div className="input-group"><label>Photo URL</label><input name="avatar" onChange={handleChange}/></div>
-            </div>
-            
-            <div style={{gridColumn:'1 / -1', marginTop:'20px'}}>
-                <button type="submit" className="btn-main">VALIDER L'INSCRIPTION</button>
-                <div style={{textAlign:'center', marginTop:'20px'}}>
-                    <Link to="/login" style={{color:'#b0c4de'}}>Annuler</Link>
-                </div>
-            </div>
+          <div>
+            <input placeholder="Téléphone (Sim)" value={form.tel} onChange={e => setForm({...form, tel: e.target.value})} required />
+          </div>
+          <div>
+            <input placeholder="Métier / Statut" value={form.metier} onChange={e => setForm({...form, metier: e.target.value})} required />
+          </div>
+
+          {/* Finance */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <input placeholder="Compte Bancaire (IBAN/Rib)" value={form.banque} onChange={e => setForm({...form, banque: e.target.value})} required />
+          </div>
+
+          {/* Sécurité */}
+          <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+            <input type="password" placeholder="Définir Code d'Accès" value={form.mdp} onChange={e => setForm({...form, mdp: e.target.value})} required />
+          </div>
+
+          <div style={{ gridColumn: '1 / -1', marginTop: '20px' }}>
+            <button type="submit" className="btn-primary w-full" disabled={loading}>
+              {loading ? 'TRAITEMENT EN COURS...' : 'VALIDER LE DOSSIER'}
+            </button>
+          </div>
         </form>
+
+        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <Link to="/" className="text-muted" style={{ fontSize: '0.9rem', textDecoration: 'none' }}>
+            ← Retour à la connexion
+          </Link>
+        </div>
       </div>
     </div>
   );

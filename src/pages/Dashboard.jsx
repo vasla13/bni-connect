@@ -1,198 +1,215 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
-import { doc, getDoc, updateDoc, increment, addDoc, collection } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import bniLogo from '../assets/logo.png';
+import { signOut } from 'firebase/auth';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  
-  const [modal, setModal] = useState({ show: false, title: '', msg: '', onConfirm: null });
-  const [isEditing, setIsEditing] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({});
+  const navigate = useNavigate();
+  const today = new Date().toLocaleDateString('fr-FR');
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (u) {
-        const d = await getDoc(doc(db, "users", u.uid));
-        if (d.exists()) {
-            const userData = { uid: u.uid, ...d.data() };
-            setUser(userData); setEditForm(userData.info);
-        }
-      } else { navigate('/login'); }
+    if (!auth.currentUser) return navigate('/');
+    
+    // Écoute en temps réel des données
+    const unsub = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
+      if (doc.exists()) {
+        setUserData(doc.data());
+        setEditForm(doc.data().info);
+      }
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, [navigate]);
 
-  const handleActivity = () => {
-     if(!user) return;
-     const today = new Date().toLocaleDateString('fr-FR');
-     if (user.game.lastQuestionDate === today && user.game.dailyCount >= 5) { 
-        setModal({ show: true, title: "Limite Atteinte", msg: "Quota journalier atteint." });
-        return; 
-     }
-     setModal({ 
-        show: true, title: "Activité", msg: "Confirmer l'action pour +50$ ?", 
-        onConfirm: async () => {
-            const isNewDay = user.game.lastQuestionDate !== today;
-            await updateDoc(doc(db, "users", user.uid), {
-                "economy.enAttente": increment(50),
-                "game.lastQuestionDate": today,
-                "game.dailyCount": isNewDay ? 1 : increment(1)
-            });
-            window.location.reload();
-        }
-     });
+  const handleLogout = () => {
+    signOut(auth);
+    navigate('/');
   };
 
-  const handleWithdraw = () => {
-     if(user.economy.enAttente < 2000) return;
-     setModal({
-        show: true, title: "Virement", msg: `Transférer $${user.economy.enAttente} vers le compte ${user.info.banque} ?`,
-        onConfirm: async () => {
-            await addDoc(collection(db, "withdrawals"), {
-                userId: user.uid,
-                nomComplet: `${user.info.prenom} ${user.info.nom}`,
-                compteBancaire: user.info.banque,
-                tel: user.info.tel,
-                montant: user.economy.enAttente,
-                date: new Date().toISOString()
-            });
-            await updateDoc(doc(db, "users", user.uid), { "economy.enAttente": 0, "economy.statutRetrait": "waiting" });
-            window.location.reload();
-        }
-     });
+  const handleFarm = async () => {
+    if (!userData) return;
+
+    // Reset du compteur journalier si la date a changé
+    let currentCount = userData.game?.dailyCount || 0;
+    const lastDate = userData.game?.lastQuestionDate || '';
+
+    if (lastDate !== today) {
+      currentCount = 0;
+    }
+
+    if (currentCount >= 5) {
+      alert("Quota journalier atteint. Revenez demain pour plus de crédits.");
+      return;
+    }
+
+    // Mise à jour
+    const newAmount = (userData.economy?.enAttente || 0) + 50;
+    
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      "economy.enAttente": newAmount,
+      "game.dailyCount": currentCount + 1,
+      "game.lastQuestionDate": today
+    });
+  };
+
+  const handleWithdraw = async () => {
+    const amount = userData.economy?.enAttente || 0;
+    if (amount < 2000) return alert("Fonds insuffisants. Minimum requis: 2000 $.");
+    if (userData.economy.statutRetrait === 'waiting') return alert("Une transaction est déjà en cours de validation.");
+
+    try {
+      // Création de la demande de virement
+      await addDoc(collection(db, "withdrawals"), {
+        userId: auth.currentUser.uid,
+        nomComplet: `${userData.info.prenom} ${userData.info.nom}`,
+        montant: amount,
+        compteBancaire: userData.info.banque,
+        date: new Date().toISOString(),
+        status: 'pending'
+      });
+
+      // Update statut utilisateur
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        "economy.statutRetrait": "waiting"
+      });
+
+      alert("Demande de transfert envoyée au réseau bancaire.");
+    } catch (e) {
+      console.error(e);
+      alert("Erreur réseau lors du transfert.");
+    }
   };
 
   const saveProfile = async () => {
-      try {
-          await updateDoc(doc(db, "users", user.uid), { "info": editForm });
-          setIsEditing(false); window.location.reload();
-      } catch (e) { alert(e.message); }
+    await updateDoc(doc(db, "users", auth.currentUser.uid), {
+      info: editForm
+    });
+    setModalOpen(false);
   };
 
-  if (!user) return <div style={{height:'100vh', display:'flex', justifyContent:'center', alignItems:'center'}}>Chargement...</div>;
-
-  const progressPercent = Math.min((user.economy.enAttente / 2000) * 100, 100);
+  if (!userData) return <div className="flex-center" style={{height:'100vh'}}><div className="loader"></div></div>;
 
   return (
-    <div className="dash-layout">
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+      
+      {/* Header */}
+      <header className="glass-panel" style={{ padding: '1rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 className="text-cyan" style={{ margin: 0, fontSize: '1.5rem' }}>INTERFACE NEURO-FINANCIÈRE</h1>
+          <span className="text-muted" style={{ fontSize: '0.8rem' }}>CONNECTÉ EN TANT QUE : {userData.info.prenom.toUpperCase()} {userData.info.nom.toUpperCase()}</span>
+        </div>
+        <button className="btn-danger" style={{ fontSize: '0.8rem', padding: '8px 16px' }} onClick={handleLogout}>
+          DÉCONNEXION
+        </button>
+      </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         
-        {/* MODAL EDIT */}
-        {isEditing && (
-            <div className="modal-overlay">
-                <div className="modal-content">
-                    <h3 style={{marginTop:0}}>Modifier Profil</h3>
-                    <div className="input-group"><label>Avatar URL</label><input value={editForm.avatar} onChange={(e) => setEditForm({...editForm, avatar: e.target.value})} /></div>
-                    <div className="input-group"><label>Métier</label><input value={editForm.metier} onChange={(e) => setEditForm({...editForm, metier: e.target.value})} /></div>
-                    <div className="input-group"><label>Téléphone</label><input value={editForm.tel} onChange={(e) => setEditForm({...editForm, tel: e.target.value})} /></div>
-                    <div className="input-group"><label>Banque</label><input value={editForm.banque} onChange={(e) => setEditForm({...editForm, banque: e.target.value})} /></div>
-                    <div className="modal-actions">
-                        <button className="btn-confirm" onClick={saveProfile}>Sauvegarder</button>
-                        <button className="btn-cancel" onClick={() => setIsEditing(false)}>Annuler</button>
-                    </div>
-                </div>
+        {/* Carte Identité */}
+        <div className="glass-panel" style={{ padding: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <img 
+              src={userData.info.avatar} 
+              alt="Avatar" 
+              style={{ width: '80px', height: '80px', borderRadius: '50%', border: '2px solid var(--primary)', marginRight: '1rem', objectFit: 'cover' }} 
+            />
+            <div>
+              <h3 style={{ margin: 0 }}>{userData.info.prenom} {userData.info.nom}</h3>
+              <p className="text-cyan" style={{ margin: '5px 0' }}>{userData.info.metier}</p>
+              <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '5px 10px' }} onClick={() => setModalOpen(true)}>
+                ÉDITER PROFIL
+              </button>
             </div>
-        )}
-
-        {/* MODAL ALERT */}
-        {modal.show && (
-            <div className="modal-overlay">
-                <div className="modal-content">
-                    <h3 style={{marginTop:0}}>{modal.title}</h3>
-                    <p>{modal.msg}</p>
-                    <div className="modal-actions">
-                        {modal.onConfirm && <button className="btn-confirm" onClick={modal.onConfirm}>Confirmer</button>}
-                        <button className="btn-cancel" onClick={() => setModal({...modal, show: false})}>Fermer</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* HEADER PRO */}
-        <div className="user-header">
-             <div style={{display:'flex', alignItems:'center', gap:'20px'}}>
-                 <img src={bniLogo} alt="Logo" style={{height:'50px'}} />
-                 <div>
-                     <h2 style={{margin:0, fontSize:'1.5rem', color:'white'}}>BNI CONNECT</h2>
-                     <span style={{color:'var(--highlight)', fontSize:'0.9rem', letterSpacing:'1px'}}>CITOYEN VÉRIFIÉ</span>
-                 </div>
-             </div>
-             
-             <div style={{display:'flex', alignItems:'center', gap:'20px', cursor:'pointer'}} onClick={() => setIsEditing(true)}>
-                 <div style={{textAlign:'right'}}>
-                     <div style={{fontWeight:'bold', fontSize:'1.2rem'}}>{user.info.prenom} {user.info.nom}</div>
-                     <div style={{color:'#b0c4de', fontSize:'0.9rem'}}>{user.info.metier}</div>
-                 </div>
-                 <div style={{width:'60px', height:'60px', borderRadius:'50%', border:'3px solid var(--highlight)', backgroundImage:`url(${user.info.avatar})`, backgroundSize:'cover', backgroundPosition:'center', backgroundColor:'#333'}}></div>
-                 <button onClick={(e) => { e.stopPropagation(); auth.signOut(); }} style={{background:'rgba(255,0,0,0.2)', border:'1px solid red', color:'red', padding:'10px', borderRadius:'8px', cursor:'pointer'}}>
-                    <i className="fas fa-power-off"></i> OFF
-                 </button>
-             </div>
+          </div>
+          
+          <div className="text-muted" style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
+            <p><strong>TEL:</strong> {userData.info.tel}</p>
+            <p><strong>BANQUE:</strong> {userData.info.banque}</p>
+          </div>
         </div>
 
-        {/* STATS GRID */}
-        <div className="stats-grid">
-            {/* SOLDE */}
-            <div className="stat-box">
-                <div style={{display:'flex', justifyContent:'space-between', color:'#b0c4de', fontSize:'1rem', marginBottom:'10px'}}>
-                    <span>ARGENT EN ATTENTE</span>
-                    {user.economy.statutRetrait === 'waiting' && <span style={{color:'orange'}}>● Vérification</span>}
-                </div>
-                <div style={{fontSize:'4rem', fontWeight:'bold', color:'white'}}>
-                    ${user.economy.enAttente}
-                </div>
-                <div style={{marginTop:'20px'}}>
-                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem', color:'#aaa', marginBottom:'5px'}}>
-                        <span>Objectif Virement: $2000</span>
-                        <span>{Math.round(progressPercent)}%</span>
-                    </div>
-                    <div className="progress-bg">
-                        <div className="progress-fill" style={{width: `${progressPercent}%`, background: progressPercent >= 100 ? '#00c853' : '#00b4d8'}}></div>
-                    </div>
-                </div>
+        {/* Carte Économie (Farm) */}
+        <div className="glass-panel" style={{ padding: '2rem', position: 'relative', overflow: 'hidden' }}>
+          <h3 className="text-muted" style={{ fontSize: '0.9rem' }}>CRÉDITS NON SÉCURISÉS</h3>
+          <div style={{ fontSize: '3rem', fontFamily: 'Rajdhani', fontWeight: 'bold', color: 'var(--primary)' }}>
+            {userData.economy.enAttente} $
+          </div>
+          
+          <div style={{ margin: '1.5rem 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <span style={{ fontSize: '0.8rem' }}>QUOTA JOURNALIER</span>
+              <span style={{ fontSize: '0.8rem' }}>{userData.game?.lastQuestionDate === today ? userData.game?.dailyCount : 0} / 5</span>
             </div>
+            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px' }}>
+              <div style={{ 
+                width: `${((userData.game?.lastQuestionDate === today ? userData.game?.dailyCount : 0) / 5) * 100}%`, 
+                height: '100%', 
+                background: 'var(--primary)',
+                boxShadow: '0 0 10px var(--primary)',
+                transition: 'width 0.5s ease'
+              }}></div>
+            </div>
+          </div>
 
-            {/* ACTIVITÉ */}
-            <div className="stat-box" style={{textAlign:'center'}}>
-                <div style={{marginBottom:'20px'}}>
-                    <span style={{background:'rgba(0, 180, 216, 0.2)', color:'#00b4d8', padding:'8px 16px', borderRadius:'20px', fontSize:'0.9rem', fontWeight:'bold'}}>
-                        QUOTA : {user.game.lastQuestionDate === new Date().toLocaleDateString('fr-FR') ? user.game.dailyCount : 0} / 5
-                    </span>
-                </div>
-                <h3 style={{margin:'0 0 10px 0', fontSize:'1.4rem'}}>Activité Citoyenne</h3>
-                <p style={{color:'#b0c4de', marginBottom:'25px'}}>Répondez aux questions pour générer du crédit.</p>
-                <button onClick={handleActivity} className="btn-action">
-                    RÉPONDRE (+$50)
-                </button>
-            </div>
+          <button onClick={handleFarm} className="btn-primary w-full">
+            EFFECTUER MISSION (+50$)
+          </button>
         </div>
 
-        {/* RETRAIT */}
-        <div className="pro-card" style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
-             <div style={{display:'flex', alignItems:'center', gap:'20px'}}>
-                 <div style={{fontSize:'2.5rem', color:'white'}}>€</div>
-                 <div>
-                     <h3 style={{margin:0}}>Virement Bancaire</h3>
-                     <p style={{margin:0, color:'#b0c4de'}}>Vers le compte : <span style={{color:'white', fontWeight:'bold'}}>{user.info.banque}</span></p>
-                 </div>
-             </div>
-             
-             {user.economy.enAttente >= 2000 && user.economy.statutRetrait !== 'waiting' ? (
-                 <button onClick={handleWithdraw} className="btn-main" style={{width:'auto', padding:'10px 40px'}}>
-                     INITIER VIREMENT
-                 </button>
-             ) : (
-                 <div style={{padding:'10px 20px', border:'2px dashed #555', borderRadius:'8px', color:'#aaa', fontWeight:'bold'}}>
-                     {user.economy.statutRetrait === 'waiting' ? 'EN COURS DE VALIDATION' : 'MINIMUM REQUIS : $2000'}
-                 </div>
-             )}
+        {/* Carte Banque */}
+        <div className="glass-panel" style={{ padding: '2rem' }}>
+          <h3 className="text-muted" style={{ fontSize: '0.9rem' }}>CAPITAL SÉCURISÉ</h3>
+          <div style={{ fontSize: '3rem', fontFamily: 'Rajdhani', fontWeight: 'bold', color: '#00ff9d' }}>
+            {userData.economy.gagneTotal} $
+          </div>
+
+          <hr style={{ borderColor: 'rgba(255,255,255,0.1)', margin: '1.5rem 0' }} />
+
+          {userData.economy.statutRetrait === 'waiting' ? (
+            <div style={{ background: 'rgba(255, 193, 7, 0.1)', color: '#ffc107', padding: '1rem', border: '1px solid #ffc107', borderRadius: '4px', textAlign: 'center' }}>
+              ⏳ TRANSFERT EN COURS DE VALIDATION
+            </div>
+          ) : (
+            <div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                Seuil de transfert minimum : 2000 $
+              </p>
+              <button 
+                onClick={handleWithdraw} 
+                className="btn-secondary w-full"
+                disabled={userData.economy.enAttente < 2000}
+                style={{ opacity: userData.economy.enAttente < 2000 ? 0.5 : 1 }}
+              >
+                DEMANDER VIREMENT
+              </button>
+            </div>
+          )}
         </div>
-        
-        <div style={{textAlign:'center', marginTop:'40px', color:'#aaa'}}>
-            Total Sécurisé : <span style={{color:'#00c853', fontWeight:'bold'}}>${user.economy.gagneTotal}</span>
+      </div>
+
+      {/* MODAL ÉDITION */}
+      {modalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(5px)' }}>
+          <div className="glass-panel" style={{ padding: '2rem', width: '90%', maxWidth: '500px' }}>
+            <h3 className="text-cyan">MISE À JOUR DONNÉES</h3>
+            
+            <div style={{ display: 'grid', gap: '1rem', margin: '1.5rem 0' }}>
+              <input placeholder="URL Avatar" value={editForm.avatar} onChange={(e) => setEditForm({...editForm, avatar: e.target.value})} />
+              <input placeholder="Métier" value={editForm.metier} onChange={(e) => setEditForm({...editForm, metier: e.target.value})} />
+              <input placeholder="Téléphone" value={editForm.tel} onChange={(e) => setEditForm({...editForm, tel: e.target.value})} />
+              <input placeholder="Banque" value={editForm.banque} onChange={(e) => setEditForm({...editForm, banque: e.target.value})} />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className="btn-primary w-full" onClick={saveProfile}>SAUVEGARDER</button>
+              <button className="btn-danger w-full" onClick={() => setModalOpen(false)}>ANNULER</button>
+            </div>
+          </div>
         </div>
+      )}
     </div>
   );
 }

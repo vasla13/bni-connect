@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, runTransaction, increment } from 'firebase/firestore';
+import { collection, onSnapshot, doc, runTransaction } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 
 export default function Admin() {
@@ -8,84 +8,97 @@ export default function Admin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Vérification basique d'accès
-    if(!auth.currentUser) navigate('/login');
+    // Sécurité basique
+    if (!auth.currentUser) return navigate('/');
 
-    const q = query(collection(db, "withdrawals"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setWithdrawals(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsub = onSnapshot(collection(db, "withdrawals"), (snapshot) => {
+      setWithdrawals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+
     return () => unsub();
   }, [navigate]);
 
-  const validatePayment = async (req) => {
-    if(!window.confirm(`Confirmer le virement de $${req.montant} ?`)) return;
-    
-    try {
-        await runTransaction(db, async (transaction) => {
-            const userRef = doc(db, "users", req.userId);
-            const reqRef = doc(db, "withdrawals", req.id);
+  const handlePay = async (item) => {
+    if(!window.confirm(`Confirmer le virement de ${item.montant}$ pour ${item.nomComplet} ?`)) return;
 
-            transaction.delete(reqRef);
-            transaction.update(userRef, {
-                "economy.gagneTotal": increment(req.montant),
-                "economy.statutRetrait": "aucun"
-            });
+    try {
+      await runTransaction(db, async (transaction) => {
+        // 1. Lire le user
+        const userRef = doc(db, "users", item.userId);
+        const userSnap = await transaction.get(userRef);
+        
+        if (!userSnap.exists()) throw "User n'existe pas";
+
+        const userData = userSnap.data();
+        const currentEnAttente = userData.economy.enAttente || 0;
+        const currentGagne = userData.economy.gagneTotal || 0;
+
+        // 2. Mettre à jour l'économie
+        // On soustrait le montant de "enAttente" et on l'ajoute à "gagneTotal"
+        // Note: Si le joueur a farmé entre temps, on ne remet pas à 0, on soustrait juste le montant payé.
+        const newEnAttente = currentEnAttente >= item.montant ? currentEnAttente - item.montant : 0;
+        
+        transaction.update(userRef, {
+          "economy.enAttente": newEnAttente,
+          "economy.gagneTotal": currentGagne + item.montant,
+          "economy.statutRetrait": "aucun"
         });
+
+        // 3. Supprimer la demande
+        transaction.delete(doc(db, "withdrawals", item.id));
+      });
+      
     } catch (e) {
-        alert("Erreur: " + e.message);
+      console.error(e);
+      alert("Erreur transaction: " + e);
     }
   };
 
   return (
-    <div style={{padding:'20px'}}>
-        <div className="dash-container" style={{margin:'0 auto'}}>
-            <div className="dash-header">
-                <h2 style={{margin:0}}>ADMINISTRATION <span style={{background:'red', fontSize:'0.7rem', padding:'2px 5px', borderRadius:'3px'}}>SECURE</span></h2>
-                <button onClick={() => navigate('/dashboard')} style={{background:'transparent', border:'1px solid #aaa', color:'#aaa', padding:'5px 15px', borderRadius:'20px'}}>
-                    Retour Vue User
-                </button>
-            </div>
+    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+      <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 className="text-cyan">PANNEAU SUPERVISION BNI</h1>
+        <button className="btn-secondary" onClick={() => navigate('/dashboard')}>RETOUR DASHBOARD</button>
+      </header>
 
-            <h3 style={{marginBottom:'20px'}}>Demandes de paiement ({withdrawals.length})</h3>
-
-            {withdrawals.length === 0 && (
-                <div style={{textAlign:'center', padding:'40px', color:'#aaa', border:'1px dashed #444', borderRadius:'10px'}}>
-                    Aucune demande en attente.
-                </div>
+      <div className="glass-panel" style={{ padding: '1rem' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', color: 'var(--text-main)' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--primary)', textAlign: 'left' }}>
+              <th style={{ padding: '1rem' }}>DATE</th>
+              <th style={{ padding: '1rem' }}>CITOYEN</th>
+              <th style={{ padding: '1rem' }}>COMPTE CIBLE</th>
+              <th style={{ padding: '1rem', textAlign: 'right' }}>MONTANT</th>
+              <th style={{ padding: '1rem', textAlign: 'center' }}>ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            {withdrawals.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  AUCUNE TRANSACTION EN ATTENTE
+                </td>
+              </tr>
+            ) : (
+              withdrawals.map(w => (
+                <tr key={w.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '1rem', fontFamily: 'monospace' }}>{new Date(w.date).toLocaleDateString()} {new Date(w.date).toLocaleTimeString()}</td>
+                  <td style={{ padding: '1rem', fontWeight: 'bold' }}>{w.nomComplet}</td>
+                  <td style={{ padding: '1rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{w.compteBancaire}</td>
+                  <td style={{ padding: '1rem', textAlign: 'right', color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.2rem' }}>
+                    {w.montant} $
+                  </td>
+                  <td style={{ padding: '1rem', textAlign: 'center' }}>
+                    <button className="btn-primary" style={{ padding: '5px 15px', fontSize: '0.8rem' }} onClick={() => handlePay(w)}>
+                      AUTORISER VIREMENT
+                    </button>
+                  </td>
+                </tr>
+              ))
             )}
-
-            {withdrawals.map(req => (
-                <div key={req.id} className="admin-card">
-                    <div style={{display:'flex', gap:'20px', alignItems:'center'}}>
-                        {/* Grosse icone Euro verte */}
-                        <div className="euro-badge">€</div>
-                        
-                        <div>
-                            <h4 style={{margin:'0 0 5px 0', fontSize:'1.1rem'}}>Paiement pour {req.nomComplet}</h4>
-                            <div className="info-row">
-                                <span className="icon-box"><i className="fas fa-university"></i></span>
-                                <span>Compte: <strong style={{color:'white'}}>{req.compteBancaire}</strong></span>
-                            </div>
-                            <div className="info-row">
-                                <span className="icon-box"><i className="fas fa-phone"></i></span>
-                                <span>Tél: {req.tel}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style={{display:'flex', alignItems:'center', gap:'20px'}}>
-                        <div style={{textAlign:'right'}}>
-                            <div style={{color:'#aaa', fontSize:'0.8rem'}}>Montant du virement</div>
-                            <div className="money-large">${req.montant}</div>
-                        </div>
-                        <button onClick={() => validatePayment(req)} className="btn-validate">
-                            € Payé
-                        </button>
-                    </div>
-                </div>
-            ))}
-        </div>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

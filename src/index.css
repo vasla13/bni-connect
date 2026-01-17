@@ -1,134 +1,139 @@
-:root {
-  /* RETOUR AU BLEU BNI LUMINEUX */
-  --bg-core: #003366;       /* Bleu BNI sombre */
-  --bg-gradient: radial-gradient(circle at top center, #00529b 0%, #002244 100%);
-  
-  --card-bg: rgba(0, 50, 100, 0.6); /* Fond des cartes plus clair */
-  --card-border: 1px solid rgba(255, 255, 255, 0.2);
-  
-  --input-bg: rgba(255, 255, 255, 0.1); /* Fond des champs CLAIR */
-  --input-border: 1px solid rgba(255, 255, 255, 0.3);
-  
-  --primary: #00c853;       /* Vert pour les actions (Paiement) */
-  --highlight: #00b4d8;     /* Bleu cyan pour les titres */
-  
-  --text-main: #ffffff;
-  --text-muted: #dbeafe;    /* Blanc cassé très lisible */
-}
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;600&display=swap');
 
-* { box-sizing: border-box; }
+:root {
+  --bg-deep: #050b14;
+  --bg-panel: rgba(16, 26, 41, 0.7);
+  --bg-input: rgba(255, 255, 255, 0.05);
+  
+  --primary: #00f0ff; /* Cyan Cyber */
+  --primary-dim: rgba(0, 240, 255, 0.1);
+  --accent: #2d62ff; /* Bleu Corpo */
+  --text-main: #e0e6ed;
+  --text-muted: #94a3b8;
+  --danger: #ff2a2a;
+  --success: #00ff9d;
+
+  --border-radius: 4px; /* Plus carré pour le look tech */
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+}
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', 'Roboto', sans-serif;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-deep);
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px; /* Grille subtile de fond */
   color: var(--text-main);
-  background: var(--bg-gradient);
-  background-attachment: fixed; /* Le fond reste fixe */
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
   min-height: 100vh;
-  font-size: 16px; /* Taille de base augmentée */
 }
 
-/* --- CONTENEURS --- */
-.auth-wrapper {
-  display: flex; flex-direction: column; justify-content: center; align-items: center;
-  min-height: 100vh; padding: 20px;
+h1, h2, h3, h4, .tech-font {
+  font-family: 'Rajdhani', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
-.dash-layout {
-  max-width: 1200px; margin: 0 auto; padding: 40px 20px; width: 100%;
+/* --- Composants UI Génériques --- */
+
+/* Panels */
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  border: var(--glass-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-radius: var(--border-radius);
+  transition: border-color 0.3s ease;
 }
 
-/* --- CARTES (Plus grandes et visibles) --- */
-.pro-card {
-  background: var(--card-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: var(--card-border);
-  border-radius: 16px;
-  padding: 40px;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+.glass-panel:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+/* Inputs */
+input, select, textarea {
   width: 100%;
-  margin-bottom: 25px;
+  background: var(--bg-input);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--primary);
+  padding: 12px 16px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem;
+  border-radius: var(--border-radius);
+  outline: none;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
 }
 
-/* Pour le login : largeur fixe mais confortable */
-.pro-card.auth { max-width: 500px; }
-/* Pour l'inscription : plus large */
-.pro-card.wide { max-width: 900px; }
-
-/* --- INPUTS (LISIBLES) --- */
-.input-group { margin-bottom: 25px; }
-
-label {
-  display: block; font-size: 0.9rem; font-weight: 600;
-  color: var(--highlight); margin-bottom: 8px;
-  text-transform: uppercase; letter-spacing: 0.5px;
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 15px var(--primary-dim);
+  background: rgba(0, 240, 255, 0.05);
 }
 
-input, select {
-  width: 100%; padding: 15px;
-  background: var(--input-bg); /* Fond semi-transparent clair */
-  border: var(--input-border);
-  border-radius: 8px;
-  color: white; font-size: 1.1rem; /* Texte plus gros */
-  outline: none; transition: 0.2s;
+/* Boutons */
+button {
+  cursor: pointer;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  border-radius: var(--border-radius);
 }
 
-input:focus, select:focus {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: var(--highlight);
-  box-shadow: 0 0 0 3px rgba(0, 180, 216, 0.3);
+.btn-primary {
+  background: linear-gradient(90deg, var(--accent), #1a4bd6);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  position: relative;
+  overflow: hidden;
 }
 
-::placeholder { color: rgba(255, 255, 255, 0.5); }
-
-/* --- BOUTONS --- */
-.btn-main {
-  width: 100%; padding: 15px;
-  background: white; color: #003366;
-  border: none; border-radius: 8px;
-  font-weight: 800; font-size: 1.1rem; text-transform: uppercase;
-  cursor: pointer; transition: 0.3s;
-}
-.btn-main:hover {
-  background: var(--highlight); color: white;
-  transform: translateY(-2px);
+.btn-primary:hover {
+  box-shadow: 0 0 20px rgba(45, 98, 255, 0.4);
+  transform: translateY(-1px);
 }
 
-.btn-action {
-  background: transparent; border: 2px solid var(--highlight); color: var(--highlight);
-  padding: 10px 20px; border-radius: 30px; font-weight: bold; cursor: pointer; transition: 0.3s;
-}
-.btn-action:hover { background: var(--highlight); color: white; }
-
-/* --- DASHBOARD SPECIFIQUE --- */
-.user-header {
-  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1);
-  padding: 25px; border-radius: 16px;
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 40px;
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 10px 20px;
 }
 
-.stats-grid {
-  display: grid; 
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Colonnes larges */
-  gap: 30px; margin-bottom: 30px;
+.btn-secondary:hover {
+  background: var(--primary-dim);
+  box-shadow: 0 0 10px var(--primary-dim);
 }
 
-.stat-box {
-  background: rgba(0, 40, 80, 0.5);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 16px; padding: 30px;
-  display: flex; flex-direction: column; justify-content: center;
+.btn-danger {
+  background: rgba(255, 42, 42, 0.1);
+  border: 1px solid var(--danger);
+  color: var(--danger);
 }
 
-/* Barres de progression */
-.progress-bg { height: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; margin-top: 15px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--primary); transition: width 0.5s ease; }
+/* Utilitaires */
+.text-cyan { color: var(--primary); }
+.text-muted { color: var(--text-muted); }
+.flex-center { display: flex; justify-content: center; align-items: center; }
+.w-full { width: 100%; }
+.mt-4 { margin-top: 1rem; }
+.mb-4 { margin-bottom: 1rem; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 
-/* MODAL */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999; display: flex; justify-content: center; align-items: center; }
-.modal-content { background: #002244; padding: 30px; border-radius: 12px; border: 1px solid var(--highlight); width: 90%; max-width: 500px; }
-.modal-actions { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
-.btn-confirm { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-.btn-cancel { background: transparent; border: 1px solid #aaa; color: #aaa; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+/* Animation de chargement */
+.loader {
+  border: 2px solid var(--bg-deep);
+  border-top: 2px solid var(--primary);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
