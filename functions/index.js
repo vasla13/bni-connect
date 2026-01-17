@@ -11,7 +11,6 @@ exports.submitTask = onCall(async (request) => {
 
   const uid = auth.uid;
   const userRef = admin.firestore().collection("users").doc(uid);
-  // Référence vers la sous-collection historique
   const historyRef = userRef.collection("history").doc(); 
   
   const today = new Date().toLocaleDateString('fr-FR');
@@ -33,23 +32,25 @@ exports.submitTask = onCall(async (request) => {
       return { success: false, message: "Quota quotidien atteint." };
     }
 
-    // Calculs
+    // --- CALCULS STRICTS ---
+    // On ajoute 50$ SEULEMENT au solde "En attente" (Virtuel)
     const newBalance = (userData.economy.enAttente || 0) + REWARD_AMOUNT;
     const newCount = currentCount + 1;
-    const newTotal = (userData.economy.gagneTotal || 0) + REWARD_AMOUNT;
+    
+    // NOTE IMPORTANTE : On ne lit même pas 'gagneTotal' ici pour être sûr de ne pas le toucher.
 
-    // Mise à jour User
+    // Mise à jour BDD
     transaction.update(userRef, {
       "economy.enAttente": newBalance,
-      "economy.gagneTotal": newTotal, // On met à jour le total pour les grades
+      // "economy.gagneTotal": ... <= CETTE LIGNE N'EXISTE PLUS
       "game.dailyCount": newCount,
       "game.lastQuestionDate": today
     });
 
-    // --- AJOUT DE L'HISTORIQUE ---
+    // Ajout historique
     transaction.set(historyRef, {
       type: 'gain',
-      label: 'Mission validée',
+      label: 'Mission validée (En attente)',
       montant: REWARD_AMOUNT,
       date: new Date().toISOString()
     });
