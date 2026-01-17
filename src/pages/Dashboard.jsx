@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db, functions } from '../firebase'; // Assurez-vous d'avoir ajouté 'functions' dans firebase.js
 import { doc, onSnapshot, updateDoc, addDoc, collection, arrayUnion } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions'; // Import pour la Cloud Function
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { RANDOM_QUESTIONS } from '../data/questions';
 
-// Import des nouveaux composants
+// Import des composants (assurez-vous de les avoir créés comme vu précédemment)
 import UserProfileHeader from '../components/UserProfileHeader';
 import GameCard from '../components/GameCard';
 import WalletCard from '../components/WalletCard';
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [editForm, setEditForm] = useState({});
   const [infoModal, setInfoModal] = useState({ open: false, title: '', msg: '' });
 
+  // Écoute du profil utilisateur en temps réel
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
     const unsub = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
@@ -31,8 +33,8 @@ export default function Dashboard() {
     return () => unsub();
   }, [navigate]);
 
-  // --- LOGIQUE (Reste identique, juste déplacée hors du JSX) ---
-  
+  // --- LOGIQUE MÉTIER ---
+
   const pickQuestion = () => {
     const today = new Date().toLocaleDateString('fr-FR');
     const currentCount = (user.game.lastQuestionDate === today) ? user.game.dailyCount : 0;
@@ -41,29 +43,50 @@ export default function Dashboard() {
   };
 
   const handleAnswer = async (ans) => {
-    const today = new Date().toLocaleDateString('fr-FR');
-    const currentCount = (user.game.lastQuestionDate === today) ? user.game.dailyCount : 0;
-    
-    let updates = {};
-    if (currentCount < 5) {
-      // NOTE SÉCURITÉ : Idéalement, ceci devrait être calculé côté serveur (Cloud Function)
-      updates["economy.enAttente"] = user.economy.enAttente + question.reward;
-      updates["game.dailyCount"] = currentCount + 1;
-      updates["game.lastQuestionDate"] = today;
-    }
+    // 1. Sauvegarde locale des réponses (Analytique / Sondage) - Reste côté client
     if (question.sensitive) {
-      updates["game.answers"] = arrayUnion({ 
-        question: question.text, reponse: ans, tag: question.tag || "SANS TAG", date: new Date().toISOString() 
-      });
+      try {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+           "game.answers": arrayUnion({ 
+             question: question.text, reponse: ans, tag: question.tag || "SANS TAG", date: new Date().toISOString() 
+           })
+        });
+      } catch (e) { console.error("Erreur sauvegarde réponse", e); }
     }
 
-    await updateDoc(doc(db, "users", auth.currentUser.uid), updates);
-    setQuestion(null);
-    setInfoModal({
-      open: true, 
-      title: currentCount < 5 ? "TÂCHE TERMINÉE" : "QUOTA ATTEINT",
-      msg: currentCount < 5 ? `Réponse validée. +${question.reward}$ crédités.` : "Réponse enregistrée, mais limite journalière atteinte (0$ gain)."
-    });
+    // 2. VALIDATION ET PAIEMENT SÉCURISÉ (Via Cloud Function)
+    try {
+        setQuestion(null); // Fermeture immédiate de la question pour l'UX
+        
+        // Appel à la fonction serveur 'submitTask'
+        const submitTask = httpsCallable(functions, 'submitTask');
+        
+        // On attend la réponse sécurisée du serveur
+        const result = await submitTask({ answer: ans });
+        const data = result.data;
+
+        if (data.success) {
+            setInfoModal({
+                open: true,
+                title: "TÂCHE TERMINÉE",
+                msg: `Réponse validée par le serveur. +${data.reward}$ crédités.`
+            });
+        } else {
+            setInfoModal({
+                open: true,
+                title: "QUOTA ATTEINT",
+                msg: data.message || "Vous avez atteint votre limite journalière."
+            });
+        }
+
+    } catch (error) {
+        console.error("Erreur Cloud Function:", error);
+        setInfoModal({
+            open: true,
+            title: "ERREUR",
+            msg: "Une erreur est survenue lors de la validation serveur. Vérifiez votre connexion."
+        });
+    }
   };
 
   const handleWithdraw = async () => {
@@ -97,7 +120,7 @@ export default function Dashboard() {
   return (
     <div className="container">
       
-      {/* 1. Header Profil */}
+      {/* 1. Header Profil (Inclut le Logo) */}
       <UserProfileHeader 
         user={user} 
         onEdit={() => setEditOpen(true)} 
@@ -105,7 +128,7 @@ export default function Dashboard() {
       />
 
       <div className="grid-2">
-        {/* 2. Carte Jeu */}
+        {/* 2. Carte Jeu (Quiz) */}
         <GameCard 
             user={user}
             question={question}
@@ -113,7 +136,7 @@ export default function Dashboard() {
             onAnswer={handleAnswer}
         />
 
-        {/* 3. Carte Portefeuille */}
+        {/* 3. Carte Portefeuille (Retraits) */}
         <WalletCard 
             balance={user.economy.enAttente}
             status={user.economy.statutRetrait}
@@ -121,7 +144,9 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* --- MODALES (Restent ici car globales à la page) --- */}
+      {/* --- MODALES --- */}
+      
+      {/* Modal d'information */}
       {infoModal.open && (
         <div className="overlay">
           <div className="modal-box">
@@ -132,6 +157,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Modal d'édition de profil */}
       {editOpen && (
         <div className="overlay">
           <div className="modal-box" style={{ textAlign: 'left' }}>
