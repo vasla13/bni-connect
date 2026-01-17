@@ -7,6 +7,7 @@ import { signOut } from 'firebase/auth';
 import { getQuestionPool } from '../data/questions'; 
 import { useWindowSize } from 'react-use';
 import Confetti from 'react-confetti';
+import { ShieldCheck, FileText, Lock } from 'lucide-react'; // Icônes pour les nouveaux formulaires
 
 import UserProfileHeader from '../components/UserProfileHeader';
 import GameCard from '../components/GameCard';
@@ -24,17 +25,20 @@ export default function Dashboard() {
   
   const [showConfetti, setShowConfetti] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false); // État pour la modale historique
   const [modalInfo, setModalInfo] = useState({ open: false, title: '', msg: '' });
 
-  // 1. Chargement
+  // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     if (!auth.currentUser) return navigate('/');
     
+    // Écoute du profil utilisateur
     const unsubUser = onSnapshot(doc(db, "users", auth.currentUser.uid), (doc) => {
       if (doc.exists()) setUser(doc.data());
     });
 
-    const q = query(collection(db, "users", auth.currentUser.uid, "history"), orderBy("date", "desc"), limit(5));
+    // Écoute de l'historique (pour la modale)
+    const q = query(collection(db, "users", auth.currentUser.uid, "history"), orderBy("date", "desc"), limit(10));
     const unsubHistory = onSnapshot(q, (snapshot) => {
       setHistory(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -42,7 +46,7 @@ export default function Dashboard() {
     return () => { unsubUser(); unsubHistory(); };
   }, [navigate]);
 
-  // 2. Initialisation Liste
+  // --- INITIALISATION JEU ---
   useEffect(() => {
     if (questionQueue.length === 0) {
       const fullPool = getQuestionPool();
@@ -54,28 +58,22 @@ export default function Dashboard() {
     }
   }, [questionQueue.length]);
 
-  // 3. Gestion Réponse
+  // --- ACTIONS ---
   const handleAnswer = async (ans, currentQuestion) => {
     const nextQueue = questionQueue.slice(1);
     setQuestionQueue(nextQueue);
-
     try {
         const submitTask = httpsCallable(functions, 'submitTask');
         const result = await submitTask({ answer: ans, questionData: currentQuestion });
-        
         if (result.data.success) {
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 2000);
         } else {
-            setModalInfo({ open: true, title: "LIMITE ATTEINTE", msg: result.data.message });
+            setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
         }
-    } catch (error) {
-        console.error(error);
-        setModalInfo({ open: true, title: "ERREUR", msg: "Une erreur est survenue." });
-    }
+    } catch (error) { console.error(error); }
   };
 
-  // 4. Retrait
   const handleWithdraw = async () => {
     if (!user || user.economy.enAttente < 2000) return;
     try {
@@ -88,13 +86,10 @@ export default function Dashboard() {
         date: new Date().toISOString(),
         statut: 'pending'
       });
-      await addDoc(collection(db, "users", auth.currentUser.uid, "history"), {
-        type: 'withdraw', label: 'Demande de virement', montant: -user.economy.enAttente, date: new Date().toISOString()
-      });
       await updateDoc(doc(db, "users", auth.currentUser.uid), { 
           "economy.statutRetrait": "waiting", "economy.enAttente": 0 
       });
-      setModalInfo({ open: true, title: "DEMANDE ENVOYÉE", msg: "Votre demande de virement a été transmise." });
+      setModalInfo({ open: true, title: "TRANSMISSION", msg: "Demande de virement envoyée au service financier." });
     } catch (e) { console.error(e); }
   };
 
@@ -102,125 +97,175 @@ export default function Dashboard() {
     try {
         await updateDoc(doc(db, "users", auth.currentUser.uid), { info: newInfo });
         setIsEditOpen(false);
-        setModalInfo({ open: true, title: "SUCCÈS", msg: "Profil mis à jour." });
     } catch (e) { console.error(e); }
   };
 
-  if (!user) return <div className="flex-center tech-font">INITIALISATION DU SYSTÈME...</div>;
+  if (!user) return <div className="flex-center tech-font">CONNEXION AU RÉSEAU...</div>;
 
   return (
     <div className="container" style={{ paddingBottom: '4rem' }}> 
       
-      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={200} colors={['#38bdf8', '#0ea5e9', '#ffffff']} />}
+      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={200} colors={['#38bdf8', '#ffffff']} />}
 
       <UserProfileHeader 
         user={user} 
-        onEdit={() => setIsEditOpen(true)} 
+        onEdit={() => setIsEditOpen(true)}
+        onShowHistory={() => setIsHistoryOpen(true)}
         onLogout={() => { signOut(auth); navigate('/'); }} 
       />
 
       <div className="grid-2" style={{ alignItems: 'start', marginTop: '2rem' }}>
         
-        {/* GAUCHE : ZONE DE TRAVAIL (SONDAGE) */}
+        {/* GAUCHE : FLUX DE TÂCHES (GameCard) */}
         <div>
            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center' }}>
-             <h3 className="text-cyan" style={{ margin: 0, fontSize: '1.1rem' }}>Flux de Tâches</h3>
-             <span className="text-muted" style={{ border: '1px solid #334155', padding: '4px 8px', borderRadius: '4px' }}>
-                EN ATTENTE : <span className="text-white">{questionQueue.length}</span>
-             </span>
+             <h3 className="tech-font" style={{ margin: 0, fontSize: '1.2rem', color: 'var(--primary)' }}>/// TÂCHES ACTIVES</h3>
+             <div style={{ display: 'flex', gap: '5px' }}>
+                {[...Array(3)].map((_, i) => (
+                    <div key={i} style={{ width: '8px', height: '8px', background: i === 0 ? 'var(--success)' : '#334155', borderRadius: '50%' }}></div>
+                ))}
+             </div>
            </div>
 
            {questionQueue.length > 0 ? (
              <GameCard user={user} question={questionQueue[0]} onAnswer={handleAnswer} />
            ) : (
-             <div className="pro-card text-center" style={{ padding: '4rem 2rem' }}>
-               <h2 className="text-muted mb-4" style={{ opacity: 0.5 }}>AUCUNE DONNÉE</h2>
-               <p className="mb-4 text-muted">Toutes les tâches disponibles ont été traitées.</p>
-               <button className="btn-secondary" onClick={() => window.location.reload()}>RECHARGER LE FLUX</button>
+             <div className="pro-card text-center" style={{ padding: '4rem 2rem', border: '1px dashed #334155' }}>
+               <h2 className="text-muted mb-4" style={{ opacity: 0.5 }}>AUCUNE TÂCHE</h2>
+               <button className="btn-secondary" onClick={() => window.location.reload()}>RECHERCHER DE NOUVELLES TÂCHES</button>
              </div>
            )}
         </div>
 
-        {/* DROITE : FINANCE & FILE D'ATTENTE */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        {/* DROITE : PORTEFEUILLE AMÉLIORÉ */}
+        <div>
+             <h3 className="tech-font" style={{ marginBottom: '1rem', fontSize: '1.2rem', color: 'var(--primary)' }}>/// FINANCE</h3>
             
-            {/* CARTE SOLDE */}
-            <div className="pro-card" style={{ borderLeft: '4px solid var(--primary)' }}>
-               <h3 className="text-cyan" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>PORTEFEUILLE VIRTUEL</h3>
-               
-               <div style={{ padding: '1rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem' }}>
-                 <h2 style={{ fontSize: '3.5rem', margin: 0, fontFamily: 'Rajdhani', lineHeight: 1 }}>
-                    {user.economy.enAttente} <span style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>$</span>
-                 </h2>
+            <div className="pro-card" style={{ borderLeft: '4px solid var(--primary)', position: 'relative' }}>
+               {/* FOND DE CARTE TECH */}
+               <div style={{ position: 'absolute', right: '10px', top: '10px', opacity: 0.1 }}>
+                  <ShieldCheck size={100} />
                </div>
-               
-               <div style={{ marginBottom: '1rem' }}>
+
+               {/* 1. SOLDE EN ATTENTE */}
+               <div style={{ marginBottom: '2rem' }}>
+                   <label>SOLDE TEMPORAIRE</label>
+                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                       <h2 style={{ fontSize: '3.5rem', margin: 0, fontFamily: 'Rajdhani', lineHeight: 1, color: '#fff' }}>
+                          {user.economy.enAttente}
+                       </h2>
+                       <span style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>$</span>
+                   </div>
+                   <div className="progress" style={{ marginTop: '10px', height: '4px' }}>
+                       <span style={{ width: `${Math.min((user.economy.enAttente / 2000) * 100, 100)}%` }}></span>
+                   </div>
+               </div>
+
+               {/* 2. BOUTON ACTION */}
+               <div style={{ marginBottom: '2rem' }}>
                  {user.economy.statutRetrait === 'waiting' ? (
-                   <button className="btn-warning" disabled>
-                      TRAITEMENT EN COURS...
-                   </button>
+                   <button className="btn-warning" disabled>TRAITEMENT BANCAIRE EN COURS...</button>
                  ) : (
                    <button 
                      className="btn-main" 
                      onClick={handleWithdraw}
                      disabled={user.economy.enAttente < 2000}
                      style={{ 
-                        opacity: user.economy.enAttente < 2000 ? 0.5 : 1,
+                        opacity: user.economy.enAttente < 2000 ? 0.6 : 1,
                         background: user.economy.enAttente < 2000 ? '#1e293b' : 'var(--primary)',
-                        color: user.economy.enAttente < 2000 ? '#64748b' : '#0f172a',
-                        border: user.economy.enAttente < 2000 ? '1px solid #334155' : 'none'
                      }}
                    >
-                     {user.economy.enAttente < 2000 ? `MINIMUM REQUIS : 2000 $` : "INITIER VIREMENT BANCAIRE"}
+                     {user.economy.enAttente < 2000 ? `CIBLE : 2000 $` : "SÉCURISER LES FONDS"}
                    </button>
                  )}
                </div>
-               
-               <p className="text-center text-muted" style={{ fontSize: '0.75rem', margin: 0 }}>
-                  TRANSACTION SÉCURISÉE PAR BNI-NET
-               </p>
-            </div>
 
-            {/* LISTE DES PROCHAINES QUESTIONS */}
-            <div className="pro-card" style={{ padding: '0' }}>
-                <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(56, 189, 248, 0.1)' }}>
-                    <h3 className="text-muted" style={{ margin: 0, fontSize: '0.85rem' }}>FILE D'ATTENTE</h3>
-                </div>
-                
-                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                    {questionQueue.slice(1).map((q, i) => (
-                        <div key={q.uniqueId} style={{ 
-                            padding: '1rem 1.5rem', 
-                            borderBottom: '1px solid rgba(255,255,255,0.03)', 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '0.9rem' 
-                        }}>
-                            <span style={{ color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' }}>
-                                {q.text}
-                            </span>
-                            <span className="text-cyan font-mono" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                +{q.reward || 50}$
-                            </span>
-                        </div>
-                    ))}
-                    {questionQueue.length <= 1 && (
-                        <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>
-                            File d'attente vide.
-                        </div>
-                    )}
-                </div>
+               {/* 3. TOTAL ACCEPTÉ (Nouveau !) */}
+               <div style={{ 
+                   background: 'rgba(16, 185, 129, 0.1)', 
+                   border: '1px solid rgba(16, 185, 129, 0.3)', 
+                   padding: '15px', borderRadius: '4px',
+                   display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+               }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                       <ShieldCheck size={20} color="#10b981"/>
+                       <span style={{ fontSize: '0.9rem', color: '#10b981', fontWeight: 'bold' }}>FONDS SÉCURISÉS</span>
+                   </div>
+                   <span style={{ fontFamily: 'Rajdhani', fontSize: '1.4rem', fontWeight: 'bold', color: '#fff' }}>
+                       {user.economy.gagneTotal || 0} $
+                   </span>
+               </div>
             </div>
         </div>
       </div>
 
-      <div style={{ marginTop: '3rem' }}>
-         <HistorySection history={history} />
+      {/* --- SECTION BASSE : NOUVEAUX FORMULAIRES --- */}
+      <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid #1e293b' }}>
+         <h3 className="tech-font" style={{ marginBottom: '2rem', fontSize: '1.4rem', color: 'var(--text-main)' }}>
+            /// DOSSIERS CLASSIFIÉS & FORMULAIRES SPÉCIAUX
+         </h3>
+
+         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+             
+             {/* CARTE 1 */}
+             <div className="pro-card" style={{ borderColor: 'var(--primary)', cursor: 'pointer', transition: '0.3s' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <FileText size={24} color="var(--primary)"/>
+                    <span className="text-cyan">1500 $</span>
+                </div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>RECENSEMENT ÉTENDU</h4>
+                <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Formulaire complet de 30 questions sur votre situation personnelle et vos habitudes.</p>
+                <div style={{ marginTop: '15px' }}>
+                    <button className="btn-secondary w-full">OUVRIR LE DOSSIER</button>
+                </div>
+             </div>
+
+             {/* CARTE 2 */}
+             <div className="pro-card" style={{ borderColor: 'var(--warning)', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <Lock size={24} color="var(--warning)"/>
+                    <span className="text-warning">2500 $</span>
+                </div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>PROTOCOLE DE SÉCURITÉ</h4>
+                <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Test d'aptitude et de loyauté envers l'administration centrale. (45 Questions)</p>
+                <div style={{ marginTop: '15px' }}>
+                    <button className="btn-secondary w-full" style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }}>ACCÈS RESTREINT</button>
+                </div>
+             </div>
+
+             {/* CARTE 3 */}
+             <div className="pro-card" style={{ borderColor: '#a855f7', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <ShieldCheck size={24} color="#a855f7"/>
+                    <span style={{ color: '#a855f7', fontWeight: 'bold' }}>+500 CRÉDIT SOCIAL</span>
+                </div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>DÉNONCIATION CIVIQUE</h4>
+                <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Signalez des comportements suspects dans votre secteur. Anonymat garanti.</p>
+                <div style={{ marginTop: '15px' }}>
+                    <button className="btn-secondary w-full" style={{ borderColor: '#a855f7', color: '#a855f7' }}>SIGNALER</button>
+                </div>
+             </div>
+
+         </div>
       </div>
 
+      {/* --- MODALES --- */}
       {modalInfo.open && <InfoModal title={modalInfo.title} msg={modalInfo.msg} onClose={() => setModalInfo({ ...modalInfo, open: false })} />}
       {isEditOpen && <EditProfileModal user={user} onClose={() => setIsEditOpen(false)} onSave={handleSaveProfile} />}
+      
+      {/* MODALE HISTORIQUE (Simple Wrapper) */}
+      {isHistoryOpen && (
+        <div className="overlay" onClick={() => setIsHistoryOpen(false)}>
+            <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                <h3 className="tech-font mb-4">HISTORIQUE DES TRANSACTIONS</h3>
+                <div style={{ maxHeight: '400px', overflowY: 'auto', textAlign: 'left' }}>
+                    <HistorySection history={history} />
+                </div>
+                <button className="btn-secondary w-full mt-4" onClick={() => setIsHistoryOpen(false)} style={{ marginTop: '20px' }}>FERMER</button>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
