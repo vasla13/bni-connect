@@ -106,12 +106,12 @@ export default function Dashboard() {
     } catch (e) { console.error(e); }
   };
 
-  if (!user) return <div className="flex-center">Chargement...</div>;
+  if (!user) return <div className="flex-center tech-font">INITIALISATION DU SYSTÈME...</div>;
 
   return (
-    <div className="container" style={{ maxWidth: '1400px', padding: '0' }}> 
+    <div className="container" style={{ paddingBottom: '4rem' }}> 
       
-      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={200} />}
+      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={200} colors={['#38bdf8', '#0ea5e9', '#ffffff']} />}
 
       <UserProfileHeader 
         user={user} 
@@ -119,74 +119,104 @@ export default function Dashboard() {
         onLogout={() => { signOut(auth); navigate('/'); }} 
       />
 
-      <div style={{ padding: '2rem' }}> 
-          <div className="grid-2" style={{ alignItems: 'start' }}>
-            
-            {/* GAUCHE : SONDAGE */}
-            <div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center' }}>
-                 <h3 className="text-cyan" style={{ margin: 0 }}>QUESTIONNAIRE EN COURS</h3>
-                 <span className="text-muted" style={{ fontSize: '0.9rem' }}>EN ATTENTE : {questionQueue.length}</span>
-               </div>
+      <div className="grid-2" style={{ alignItems: 'start', marginTop: '2rem' }}>
+        
+        {/* GAUCHE : ZONE DE TRAVAIL (SONDAGE) */}
+        <div>
+           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center' }}>
+             <h3 className="text-cyan" style={{ margin: 0, fontSize: '1.1rem' }}>Flux de Tâches</h3>
+             <span className="text-muted" style={{ border: '1px solid #334155', padding: '4px 8px', borderRadius: '4px' }}>
+                EN ATTENTE : <span className="text-white">{questionQueue.length}</span>
+             </span>
+           </div>
 
-               {questionQueue.length > 0 ? (
-                 <GameCard user={user} question={questionQueue[0]} onAnswer={handleAnswer} />
-               ) : (
-                 <div className="pro-card text-center" style={{ padding: '3rem' }}>
-                   <h3 className="text-muted">AUCUN QUESTIONNAIRE</h3>
-                   <p className="mb-4">Vous avez traité toutes les demandes disponibles.</p>
-                   <button className="btn-main" onClick={() => window.location.reload()}>RAFRAÎCHIR LA LISTE</button>
-                 </div>
-               )}
+           {questionQueue.length > 0 ? (
+             <GameCard user={user} question={questionQueue[0]} onAnswer={handleAnswer} />
+           ) : (
+             <div className="pro-card text-center" style={{ padding: '4rem 2rem' }}>
+               <h2 className="text-muted mb-4" style={{ opacity: 0.5 }}>AUCUNE DONNÉE</h2>
+               <p className="mb-4 text-muted">Toutes les tâches disponibles ont été traitées.</p>
+               <button className="btn-secondary" onClick={() => window.location.reload()}>RECHARGER LE FLUX</button>
+             </div>
+           )}
+        </div>
+
+        {/* DROITE : FINANCE & FILE D'ATTENTE */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            
+            {/* CARTE SOLDE */}
+            <div className="pro-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+               <h3 className="text-cyan" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>PORTEFEUILLE VIRTUEL</h3>
+               
+               <div style={{ padding: '1rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem' }}>
+                 <h2 style={{ fontSize: '3.5rem', margin: 0, fontFamily: 'Rajdhani', lineHeight: 1 }}>
+                    {user.economy.enAttente} <span style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>$</span>
+                 </h2>
+               </div>
+               
+               <div style={{ marginBottom: '1rem' }}>
+                 {user.economy.statutRetrait === 'waiting' ? (
+                   <button className="btn-warning" disabled>
+                      TRAITEMENT EN COURS...
+                   </button>
+                 ) : (
+                   <button 
+                     className="btn-main" 
+                     onClick={handleWithdraw}
+                     disabled={user.economy.enAttente < 2000}
+                     style={{ 
+                        opacity: user.economy.enAttente < 2000 ? 0.5 : 1,
+                        background: user.economy.enAttente < 2000 ? '#1e293b' : 'var(--primary)',
+                        color: user.economy.enAttente < 2000 ? '#64748b' : '#0f172a',
+                        border: user.economy.enAttente < 2000 ? '1px solid #334155' : 'none'
+                     }}
+                   >
+                     {user.economy.enAttente < 2000 ? `MINIMUM REQUIS : 2000 $` : "INITIER VIREMENT BANCAIRE"}
+                   </button>
+                 )}
+               </div>
+               
+               <p className="text-center text-muted" style={{ fontSize: '0.75rem', margin: 0 }}>
+                  TRANSACTION SÉCURISÉE PAR BNI-NET
+               </p>
             </div>
 
-            {/* DROITE : SOLDE & INFO */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                
-                {/* SOLDE */}
-                <div className="pro-card" style={{ borderLeft: '4px solid var(--primary)' }}>
-                   <h3 className="text-cyan">SOLDE CUMULÉ</h3>
-                   <div style={{ marginTop: '1rem' }}>
-                     <h2 style={{ fontSize: '3rem', margin: 0 }}>{user.economy.enAttente} $</h2>
-                     <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '5px' }}>Seuil de virement : 2000 $</p>
-                   </div>
-                   
-                   <div style={{ marginTop: '1.5rem' }}>
-                     {user.economy.statutRetrait === 'waiting' ? (
-                       <button className="btn-warning w-full" disabled style={{ opacity: 1, cursor: 'default' }}>
-                          ⏳ VIREMENT EN COURS
-                       </button>
-                     ) : (
-                       <button 
-                         className="btn-main w-full" 
-                         onClick={handleWithdraw}
-                         disabled={user.economy.enAttente < 2000}
-                         style={{ 
-                            filter: user.economy.enAttente < 2000 ? 'grayscale(1) opacity(0.5)' : 'none',
-                            cursor: user.economy.enAttente < 2000 ? 'not-allowed' : 'pointer'
-                         }}
-                       >
-                         {user.economy.enAttente < 2000 ? "SOLDE INSUFFISANT" : "DEMANDER UN VIREMENT"}
-                       </button>
-                     )}
-                   </div>
+            {/* LISTE DES PROCHAINES QUESTIONS */}
+            <div className="pro-card" style={{ padding: '0' }}>
+                <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(56, 189, 248, 0.1)' }}>
+                    <h3 className="text-muted" style={{ margin: 0, fontSize: '0.85rem' }}>FILE D'ATTENTE</h3>
                 </div>
-
-                {/* LISTE */}
-                <div className="pro-card">
-                    <h3 className="text-muted mb-4">QUESTIONS DISPONIBLES</h3>
+                
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     {questionQueue.slice(1).map((q, i) => (
-                        <div key={q.uniqueId} style={{ padding: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>{q.text.substring(0, 35)}...</span>
-                            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>+50$</span>
+                        <div key={q.uniqueId} style={{ 
+                            padding: '1rem 1.5rem', 
+                            borderBottom: '1px solid rgba(255,255,255,0.03)', 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '0.9rem' 
+                        }}>
+                            <span style={{ color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' }}>
+                                {q.text}
+                            </span>
+                            <span className="text-cyan font-mono" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                +{q.reward || 50}$
+                            </span>
                         </div>
                     ))}
-                    {questionQueue.length <= 1 && <p className="text-muted text-center">Aucune autre question.</p>}
+                    {questionQueue.length <= 1 && (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontStyle: 'italic', fontSize: '0.9rem' }}>
+                            File d'attente vide.
+                        </div>
+                    )}
                 </div>
             </div>
-          </div>
+        </div>
+      </div>
 
-          <HistorySection history={history} />
+      <div style={{ marginTop: '3rem' }}>
+         <HistorySection history={history} />
       </div>
 
       {modalInfo.open && <InfoModal title={modalInfo.title} msg={modalInfo.msg} onClose={() => setModalInfo({ ...modalInfo, open: false })} />}
