@@ -5,98 +5,109 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 setGlobalOptions({ region: "us-central1" });
 
-// --- 1. FONCTION JEU & UPDATE PROFIL ---
+// --- 1. FONCTION JEU & UPDATE PROFIL SÉCURISÉE ---
 exports.submitTask = onCall(async (request) => {
   const { auth, data } = request;
   if (!auth) throw new HttpsError('unauthenticated', 'Identité introuvable.');
 
-  const { answer, questionData } = data; 
+  // MODIFICATION SÉCURITÉ : On ne récupère que l'ID et la réponse.
+  // On ignore le montant envoyé par le client.
+  const { answer, questionId } = data; 
   
+  if (!questionId) throw new HttpsError('invalid-argument', 'ID de question manquant.');
+
+  const db = admin.firestore();
   const uid = auth.uid;
-  const userRef = admin.firestore().collection("users").doc(uid);
+  const userRef = db.collection("users").doc(uid);
   const historyRef = userRef.collection("history").doc(); 
   
   const today = new Date().toLocaleDateString('fr-FR');
-  
-  // --- CORRECTION 1 : NETTOYAGE DU MONTANT ---
-  // On s'assure que REWARD_AMOUNT est un nombre entier, même si on reçoit "1500 $"
-  let rawReward = questionData.reward || 50;
-  let parsedReward = 50; // Valeur par défaut
-  
-  if (typeof rawReward === 'number') {
-      parsedReward = rawReward;
-  } else if (typeof rawReward === 'string') {
-      // Enlève tout ce qui n'est pas un chiffre (ex: "1500 $" -> 1500)
-      parsedReward = parseInt(rawReward.replace(/[^0-9]/g, ''), 10);
-  }
-  // Si le parsing échoue (NaN), on remet 50
-  if (isNaN(parsedReward)) parsedReward = 50;
 
-  const REWARD_AMOUNT = parsedReward;
+  return db.runTransaction(async (transaction) => {
+    // 1. RÉCUPÉRATION DE LA TÂCHE DEPUIS LA SOURCE FIABLE (DB)
+    // On cherche d'abord dans les tâches rapides, sinon dans les formulaires
+    const taskRef = db.collection("rapid_tasks").doc(questionId);
+    const formRef = db.collection("forms").doc(questionId);
 
-  // --- CORRECTION 2 : GESTION TYPE (Question vs Formulaire) ---
-  const isForm = questionData.type === 'form_submission';
-  const labelText = questionData.title || questionData.text || "Mission Inconnue";
+    const taskDoc = await transaction.get(taskRef);
+    const formDoc = await transaction.get(formRef);
 
-  return admin.firestore().runTransaction(async (transaction) => {
+    let trustedData = null;
+    let isForm = false;
+
+    if (taskDoc.exists) {
+        trustedData = taskDoc.data();
+        isForm = false;
+    } else if (formDoc.exists) {
+        trustedData = formDoc.data();
+        isForm = true;
+    } else {
+        // Cas spécial : Tâche générée par le système (ex: fallback) ou triche
+        // On autorise mais avec une récompense de 0 par sécurité si non trouvé
+        trustedData = { reward: 0, title: "Tâche inconnue", tag: "UNKNOWN" };
+    }
+
+    // 2. DÉFINITION DE LA RÉCOMPENSE (Source Serveur)
+    const REWARD_AMOUNT = parseInt(trustedData.reward || 0, 10);
+    const labelText = trustedData.title || trustedData.text || "Mission";
+
+    // 3. VÉRIFICATION UTILISATEUR
     const userDoc = await transaction.get(userRef);
     if (!userDoc.exists) throw new HttpsError('not-found', 'Utilisateur inconnu.');
 
     const userData = userDoc.data();
     
-    // A. Vérification Quota (Uniquement pour les petites questions, pas les gros formulaires)
+    // A. Vérification Quota
     let currentCount = 0;
     if (userData.game && userData.game.lastQuestionDate === today) {
       currentCount = userData.game.dailyCount || 0;
     }
 
-    // On bloque le quota seulement si ce n'est PAS un formulaire spécial
     if (!isForm && currentCount >= 5) {
       return { success: false, message: "Quota quotidien atteint." };
     }
 
-    // B. LOGIQUE DE JEU (Calculs)
-    // On s'assure que le solde précédent est bien un nombre
+    // B. LOGIQUE DE JEU
     const oldBalance = typeof userData.economy.enAttente === 'number' ? userData.economy.enAttente : 0;
     const newBalance = oldBalance + REWARD_AMOUNT;
-    
-    const newCount = isForm ? currentCount : currentCount + 1; // On n'incrémente pas le compteur quotidien pour les formulaires
+    const newCount = isForm ? currentCount : currentCount + 1;
     
     const updates = {
       "economy.enAttente": newBalance,
       "game.dailyCount": newCount,
       "game.lastQuestionDate": today,
-      // On sauvegarde dans l'historique des réponses
       "game.answers": admin.firestore.FieldValue.arrayUnion({
-          questionId: questionData.id || "unknown",
-          // --- CORRECTION 3 : Eviter 'undefined' pour Firestore ---
+          questionId: questionId,
           question: labelText, 
-          reponse: answer, // Peut être un string ou un JSON stringifié
-          tag: questionData.tag || (isForm ? "DOSSIER" : "GENERAL"),
+          reponse: answer,
+          tag: trustedData.tag || (isForm ? "DOSSIER" : "GENERAL"),
           date: new Date().toISOString()
       })
     };
 
-    // C. UPDATE PROFIL (targetField) - Uniquement pour les questions simples
-    if (questionData.targetField) {
-        updates[questionData.targetField] = answer;
+    // C. UPDATE PROFIL (targetField)
+    // Sécurisé car trustedData vient de la DB, pas du client
+    if (trustedData.targetField) {
+        updates[trustedData.targetField] = answer;
     }
 
     transaction.update(userRef, updates);
 
     // D. Log Historique Financier
-    transaction.set(historyRef, {
-      type: 'gain',
-      label: isForm ? `Dossier: ${labelText}` : `Mission ${questionData.tag || 'Standard'}`,
-      montant: REWARD_AMOUNT,
-      date: new Date().toISOString()
-    });
+    if (REWARD_AMOUNT > 0) {
+        transaction.set(historyRef, {
+        type: 'gain',
+        label: isForm ? `Dossier: ${labelText}` : `Mission ${trustedData.tag || 'Standard'}`,
+        montant: REWARD_AMOUNT,
+        date: new Date().toISOString()
+        });
+    }
 
-    return { success: true, reward: REWARD_AMOUNT, message: "Données transmises." };
+    return { success: true, reward: REWARD_AMOUNT, message: "Données transmises et validées." };
   });
 });
 
-// --- 2. FONCTION ADMIN ---
+// --- 2. FONCTION ADMIN (Inchangée mais incluse pour copie complète) ---
 exports.manageWithdrawal = onCall(async (request) => {
   const { auth, data } = request;
   if (!auth) throw new HttpsError('unauthenticated', 'Accès interdit.');
@@ -118,7 +129,6 @@ exports.manageWithdrawal = onCall(async (request) => {
     if (!userDoc.exists) throw new HttpsError('not-found', 'Utilisateur introuvable.');
     const userData = userDoc.data();
 
-    // Sécurisation des nombres
     const currentEnAttente = typeof userData.economy.enAttente === 'number' ? userData.economy.enAttente : 0;
     const currentGagneTotal = typeof userData.economy.gagneTotal === 'number' ? userData.economy.gagneTotal : 0;
     const montantTransaction = parseInt(withdrawalData.montant || 0, 10);

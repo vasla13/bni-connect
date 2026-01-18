@@ -86,6 +86,7 @@ export default function Dashboard() {
                setQuestionQueue(shuffled.map((t, i) => ({ ...t, uniqueId: Date.now() + i })));
            } else {
                // Fallback si aucune tâche n'est créée par l'admin
+               // Note: reward 0 ici, et le serveur validera 0 car pas d'ID en DB
                setQuestionQueue([{ 
                    text: "En attente d'ordres du commandement...", 
                    reward: 0, 
@@ -108,14 +109,19 @@ export default function Dashboard() {
     
     try {
         const submitTask = httpsCallable(functions, 'submitTask');
-        const result = await submitTask({ answer: ans, questionData: currentQuestion });
+        // UPDATE DE SÉCURITÉ : On envoie l'ID (currentQuestion.id est l'ID Firestore)
+        // Le serveur ignorera 'currentQuestion' s'il est envoyé, mais on garde propre.
+        const result = await submitTask({ 
+          answer: ans, 
+          questionId: currentQuestion.id 
+        });
         
         if (!result.data.success) {
-            setModalInfo({ open: true, title: "QUOTA ATTEINT", msg: result.data.message });
+            setModalInfo({ open: true, title: "ALERTE", msg: result.data.message });
         }
     } catch (error) { 
         console.error(error); 
-        // Optionnel : Gérer l'erreur visuellement
+        // Gestion d'erreur visuelle si nécessaire
     }
   };
 
