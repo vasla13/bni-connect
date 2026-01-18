@@ -17,6 +17,7 @@
   /* Bordures : Fines et précises */
   --border-tech: 1px solid rgba(56, 189, 248, 0.2);
   --border-highlight: 1px solid rgba(56, 189, 248, 0.5);
+  --border-light: 1px solid rgba(255, 255, 255, 0.05);
 
   /* Couleurs */
   --primary: #38bdf8;       /* Cyan "Sky" - Standard Corpo 2035 */
@@ -27,8 +28,11 @@
 
   /* Etats */
   --danger: #ef4444; 
+  --danger-bg: rgba(239, 68, 68, 0.15);
   --success: #10b981; 
+  --success-bg: rgba(16, 185, 129, 0.1);
   --warning: #f59e0b; 
+  --warning-bg: rgba(245, 158, 11, 0.15);
 
   /* Formes : Angulaires et Techniques */
   --radius: 4px;     /* Très peu d'arrondi, aspect "bloc de données" */
@@ -37,6 +41,7 @@
 
   /* Ombres */
   --shadow-tech: 0 0 20px rgba(56, 189, 248, 0.05);
+  --shadow-glow: 0 0 15px rgba(56, 189, 248, 0.1);
 }
 
 /* ===== BASE & AMBIANCE ===== */
@@ -86,6 +91,8 @@ h1, h2, h3, h4, .tech-font, button, label {
   color: #f1f5f9;
 }
 
+h2 { font-size: 1.8rem; margin-bottom: 0.2rem; }
+
 /* Chiffres en mode "Compteur" */
 .font-mono, span { font-variant-numeric: tabular-nums; }
 
@@ -93,13 +100,18 @@ h1, h2, h3, h4, .tech-font, button, label {
 .text-cyan { color: var(--primary) !important; text-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
 .text-warning { color: var(--warning) !important; }
 .text-danger { color: var(--danger) !important; }
-.text-muted { color: var(--text-muted) !important; font-family: 'Rajdhani', sans-serif; font-size: 0.85rem; }
+.text-muted { color: var(--text-muted) !important; font-family: 'Rajdhani', sans-serif; font-size: 0.85rem; letter-spacing: 1px; }
+
+.text-center { text-align: center; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mt-4 { margin-top: 1rem; }
+.w-full { width: 100%; }
 
 /* ===== LAYOUT ===== */
-.container { max-width: 1400px; margin: 0 auto; padding: 2rem; position: relative; z-index: 1; }
+.container { max-width: 1400px; margin: 0 auto; padding: 2rem; position: relative; z-index: 1; padding-bottom: 4rem; }
 .flex-center { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem; position: relative; z-index: 1; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-.w-full { width: 100%; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; alignItems: start; margin-top: 2rem; }
 
 /* ===== CARDS (Modules de Données) ===== */
 .pro-card {
@@ -110,12 +122,12 @@ h1, h2, h3, h4, .tech-font, button, label {
   box-shadow: var(--shadow-tech);
   padding: 2rem;
   position: relative;
-  overflow: hidden; /* Important pour les coins */
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-/* Décoration "Tech" en haut à droite */
 .pro-card::before {
-  content: "SYS.VER.4.2"; /* Petit texte décoratif */
+  content: "SYS.VER.4.2";
   position: absolute;
   top: 10px; right: 10px;
   font-family: 'Rajdhani', sans-serif;
@@ -126,7 +138,6 @@ h1, h2, h3, h4, .tech-font, button, label {
   padding: 2px 4px;
 }
 
-/* Coins techniques (Pseudo-éléments sur un container interne si possible, ou simple border trick) */
 .pro-card:hover {
   border-color: var(--primary);
   background: var(--glass-bg-strong);
@@ -142,6 +153,7 @@ label {
   color: var(--primary);
   margin-bottom: 8px;
   font-weight: 700;
+  display: flex; align-items: center; gap: 8px; /* Support des icônes */
 }
 
 input, select, textarea {
@@ -149,22 +161,32 @@ input, select, textarea {
   padding: 14px 16px;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid #334155;
-  border-left: 2px solid var(--primary); /* Ligne colorée à gauche */
+  border-left: 2px solid var(--primary);
   border-radius: 0 4px 4px 0;
   color: #fff;
-  font-family: 'Rajdhani', sans-serif; /* Saisie en police tech */
+  font-family: 'Rajdhani', sans-serif;
   font-size: 1.1rem;
   outline: none;
   transition: all 0.2s;
 }
 
+textarea { resize: none; font-family: 'Inter', sans-serif; font-size: 1rem; }
+
 input::placeholder { color: #475569; font-family: 'Inter', sans-serif; font-size: 0.9rem; }
 
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   background: rgba(15, 23, 42, 0.9);
   border-color: var(--primary);
-  box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
+  box-shadow: var(--shadow-glow);
 }
+
+/* Bouton visibilité mot de passe */
+.btn-visibility {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; box-shadow: none; padding: 0;
+  color: rgba(255,255,255,0.5); cursor: pointer;
+}
+.btn-visibility:hover { color: var(--primary); background: transparent; box-shadow: none; }
 
 /* ===== BUTTONS (Commandes) ===== */
 button {
@@ -175,6 +197,7 @@ button {
   transition: all 0.2s;
   position: relative;
   overflow: hidden;
+  display: inline-flex; justify-content: center; align-items: center; gap: 10px;
 }
 
 .btn-main {
@@ -183,7 +206,6 @@ button {
   background: var(--primary);
   color: #0f172a;
   font-size: 1rem;
-  /* Effet biseauté tech */
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
@@ -206,11 +228,153 @@ button {
   border: 1px solid #334155;
   color: var(--text-muted);
   padding: 10px 20px;
+  justify-content: flex-start; /* Alignement texte à gauche pour les QCM */
+  text-align: left;
 }
 .btn-secondary:hover {
   border-color: var(--primary);
   color: var(--primary);
   background: rgba(56, 189, 248, 0.05);
+}
+
+/* Boutons spéciaux (Danger / Warning) */
+.btn-danger {
+  background-color: var(--danger-bg) !important;
+  border: 1px solid var(--danger) !important;
+  color: var(--danger) !important;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
+}
+.btn-danger:hover {
+  background-color: var(--danger) !important;
+  color: #fff !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+  transform: translateY(-2px);
+}
+
+.btn-warning {
+  width: 100%;
+  padding: 16px 24px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: default;
+}
+
+/* ===== SPECIFIC : LOGIN PAGE ===== */
+.login-card {
+  max-width: 420px;
+  width: 100%;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-logo {
+  max-width: 180px;
+  max-height: 80px;
+  width: auto;
+  height: auto;
+  margin-bottom: 15px;
+  object-fit: contain; /* Empêche l'image d'être coupée */
+}
+
+.alert-box {
+  color: #fca5a5;
+  background: var(--danger-bg);
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(239,68,68,0.3);
+  font-size: 0.9rem;
+  display: flex; gap: 8px; align-items: center;
+}
+
+.login-footer {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: var(--border-light);
+}
+.login-footer a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+
+/* ===== SPECIFIC : GAME CARD ===== */
+.game-card-wrapper {
+  position: relative;
+  height: 400px;
+}
+
+.game-card {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flexDirection: column;
+  border-top: 4px solid var(--primary);
+  background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.9) 100%);
+}
+
+.game-card-header {
+  border-bottom: var(--border-light);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.game-card-meta {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+}
+
+.tag-reward {
+  background: var(--success-bg);
+  color: var(--success);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.question-text {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: #e2e8f0;
+  min-height: 3.6rem;
+}
+
+.game-card-body {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+
+.game-card-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.quota-row {
+  display: flex; justify-content: space-between;
+  font-size: 0.7rem; color: #64748b;
+  margin-bottom: 4px;
+}
+
+.card-depth-effect {
+  position: absolute; top: 8px; left: 8px; right: 8px; bottom: -8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius);
+  z-index: 0;
 }
 
 /* ===== DASHBOARD ELEMENTS ===== */
@@ -229,7 +393,6 @@ button {
   color: var(--primary);
   display: grid; place-items: center;
   font-size: 1.2rem;
-  /* Hexagon or Square tech shape */
   clip-path: polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%);
 }
 
@@ -248,7 +411,7 @@ button {
 /* ===== MODALES / ALERTES ===== */
 .overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.85); /* Fond très sombre */
+  background: rgba(0,0,0,0.85);
   z-index: 9999;
   display: flex; justify-content: center; align-items: center;
   backdrop-filter: blur(5px);
@@ -264,7 +427,6 @@ button {
   position: relative;
 }
 
-/* Ligne de scan décorative dans la modale */
 .modal-box::after {
   content: "";
   position: absolute;
@@ -272,6 +434,10 @@ button {
   background: var(--primary);
   animation: scan 2s infinite linear;
   opacity: 0.5;
+}
+
+.history-scroll {
+  max-height: 400px; overflow-y: auto; text-align: left;
 }
 
 @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
@@ -282,48 +448,8 @@ button {
   .container { padding: 1rem; }
 }
 
-/* --- AJOUTS POUR DASHBOARD --- */
-.text-center { text-align: center; }
-.mb-4 { margin-bottom: 1rem; }
-.w-full { width: 100%; }
-
-/* Bouton spécial "En attente" (Jaune/Orange) */
-.btn-warning {
-  width: 100%;
-  padding: 16px 24px;
-  background: rgba(245, 158, 11, 0.15); /* Fond transparent teinté */
-  color: var(--warning);
-  border: 1px solid var(--warning);
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  cursor: default; /* Pas de curseur main */
-}
-
-/* Scrollbar futuriste pour les listes */
+/* Scrollbar futuriste */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-deep); }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
-
-
-/* --- CORRECTION BOUTON DANGER --- */
-.btn-danger {
-  background-color: rgba(239, 68, 68, 0.1) !important; /* Fond rouge très léger */
-  border: 1px solid var(--danger) !important;          /* Bordure rouge vif */
-  color: var(--danger) !important;                     /* Texte rouge */
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
-  transition: all 0.2s ease;
-}
-
-.btn-danger:hover {
-  background-color: var(--danger) !important;          /* Fond plein au survol */
-  color: #fff !important;                              /* Texte blanc */
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);         /* Lueur rouge */
-  transform: translateY(-2px);
-}
