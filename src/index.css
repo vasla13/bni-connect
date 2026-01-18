@@ -384,3 +384,40 @@ button {
 ::-webkit-scrollbar-track { background: var(--bg-deep); }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+/* --- AJOUTS : ELEMENTS LISTE & STATS --- */
+.stat-section {
+  padding-bottom: 1.5rem;
+  border-bottom: var(--border-light);
+  margin-bottom: 1rem;
+}
+
+.stat-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px; border-radius: 4px; margin-top: 10px;
+  border: 1px solid transparent;
+}
+
+.stat-row.warning {
+  background: var(--warning-bg);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.stat-row.success {
+  background: var(--success-bg);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.history-item {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(255,255,255,0.05); 
+  padding: 15px; 
+  border-radius: 8px;
+  border-left-width: 4px; 
+  border-left-style: solid;
+}
+
+.icon-bubble {
+  padding: 8px; border-radius: 50%; display: flex;
+  margin-right: 15px;
+}
