@@ -3,28 +3,28 @@
 :root {
   /* ===== PALETTE "SYSTEME CENTRAL 2035" ===== */
   
-  /* Fond : Bleu profond, presque spatial mais bureaucratique */
+  /* Fond : Bleu profond */
   --bg-deep: #0b1120; 
   --bg-panel: #151e32;
   
-  /* Dégradé de fond : Lueur d'écran lointaine */
+  /* Dégradé de fond */
   --bg-gradient: radial-gradient(circle at 50% 0%, #1e293b 0%, #0b1120 80%);
 
-  /* Verre "Tech" : Plus sombre, plus contrasté */
+  /* Verre "Tech" */
   --glass-bg: rgba(21, 30, 50, 0.7); 
   --glass-bg-strong: rgba(30, 41, 59, 0.9);
   
-  /* Bordures : Fines et précises */
+  /* Bordures */
   --border-tech: 1px solid rgba(56, 189, 248, 0.2);
   --border-highlight: 1px solid rgba(56, 189, 248, 0.5);
   --border-light: 1px solid rgba(255, 255, 255, 0.05);
 
   /* Couleurs */
-  --primary: #38bdf8;       /* Cyan "Sky" - Standard Corpo 2035 */
+  --primary: #38bdf8;       /* Cyan "Sky" */
   --primary-dark: #0284c7;  
   --text-main: #e2e8f0;     /* Blanc cassé */
   --text-muted: #64748b;    /* Gris bleuté */
-  --accent-tech: #0ea5e9;   /* Bleu électrique pour les détails */
+  --accent-tech: #0ea5e9;   /* Bleu électrique */
 
   /* Etats */
   --danger: #ef4444; 
@@ -34,10 +34,9 @@
   --warning: #f59e0b; 
   --warning-bg: rgba(245, 158, 11, 0.15);
 
-  /* Formes : Angulaires et Techniques */
-  --radius: 4px;     /* Très peu d'arrondi, aspect "bloc de données" */
-  --radius-sm: 2px;  
-  --pill: 2px;       /* Boutons quasi-rectangulaires */
+  /* Formes */
+  --radius: 4px;
+  --pill: 2px;
 
   /* Ombres */
   --shadow-tech: 0 0 20px rgba(56, 189, 248, 0.05);
@@ -58,7 +57,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Grille Holographique de fond */
+/* Grille Holographique */
 body::before {
   content: "";
   position: fixed;
@@ -71,7 +70,7 @@ body::before {
   z-index: -1;
 }
 
-/* Effet Scanline (Lignes TV subtiles) */
+/* Scanlines */
 body::after {
   content: "";
   position: fixed;
@@ -87,16 +86,14 @@ body::after {
 h1, h2, h3, h4, .tech-font, button, label {
   font-family: 'Rajdhani', sans-serif;
   text-transform: uppercase;
-  letter-spacing: 2px; /* Espacement large style "Cinématique" */
+  letter-spacing: 2px;
   color: #f1f5f9;
 }
 
 h2 { font-size: 1.8rem; margin-bottom: 0.2rem; }
 
-/* Chiffres en mode "Compteur" */
+/* Utilitaires */
 .font-mono, span { font-variant-numeric: tabular-nums; }
-
-/* Utilitaires couleurs */
 .text-cyan { color: var(--primary) !important; text-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
 .text-warning { color: var(--warning) !important; }
 .text-danger { color: var(--danger) !important; }
@@ -111,9 +108,11 @@ h2 { font-size: 1.8rem; margin-bottom: 0.2rem; }
 /* ===== LAYOUT ===== */
 .container { max-width: 1400px; margin: 0 auto; padding: 2rem; position: relative; z-index: 1; padding-bottom: 4rem; }
 .flex-center { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem; position: relative; z-index: 1; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; alignItems: start; margin-top: 2rem; }
 
-/* ===== CARDS (Modules de Données) ===== */
+/* CORRECTION ICI : alignItems -> align-items */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; margin-top: 2rem; }
+
+/* ===== CARDS ===== */
 .pro-card {
   background: var(--glass-bg);
   backdrop-filter: blur(10px);
@@ -144,7 +143,7 @@ h2 { font-size: 1.8rem; margin-bottom: 0.2rem; }
   box-shadow: 0 0 30px rgba(56, 189, 248, 0.1);
 }
 
-/* ===== INPUTS (Champs Terminaux) ===== */
+/* ===== INPUTS ===== */
 .input-group { margin-bottom: 1.5rem; position: relative; }
 
 label {
@@ -153,7 +152,7 @@ label {
   color: var(--primary);
   margin-bottom: 8px;
   font-weight: 700;
-  display: flex; align-items: center; gap: 8px; /* Support des icônes */
+  display: flex; align-items: center; gap: 8px;
 }
 
 input, select, textarea {
@@ -171,7 +170,6 @@ input, select, textarea {
 }
 
 textarea { resize: none; font-family: 'Inter', sans-serif; font-size: 1rem; }
-
 input::placeholder { color: #475569; font-family: 'Inter', sans-serif; font-size: 0.9rem; }
 
 input:focus, select:focus, textarea:focus {
@@ -180,7 +178,6 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--shadow-glow);
 }
 
-/* Bouton visibilité mot de passe */
 .btn-visibility {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
   background: transparent; border: none; box-shadow: none; padding: 0;
@@ -188,7 +185,7 @@ input:focus, select:focus, textarea:focus {
 }
 .btn-visibility:hover { color: var(--primary); background: transparent; box-shadow: none; }
 
-/* ===== BUTTONS (Commandes) ===== */
+/* ===== BUTTONS ===== */
 button {
   cursor: pointer;
   font-weight: 700;
@@ -228,7 +225,7 @@ button {
   border: 1px solid #334155;
   color: var(--text-muted);
   padding: 10px 20px;
-  justify-content: flex-start; /* Alignement texte à gauche pour les QCM */
+  justify-content: flex-start;
   text-align: left;
 }
 .btn-secondary:hover {
@@ -237,7 +234,6 @@ button {
   background: rgba(56, 189, 248, 0.05);
 }
 
-/* Boutons spéciaux (Danger / Warning) */
 .btn-danger {
   background-color: var(--danger-bg) !important;
   border: 1px solid var(--danger) !important;
@@ -268,187 +264,122 @@ button {
   cursor: default;
 }
 
-/* ===== SPECIFIC : LOGIN PAGE ===== */
-.login-card {
-  max-width: 420px;
-  width: 100%;
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
+/* ===== LOGIN ===== */
+.login-card { max-width: 420px; width: 100%; }
+.login-header { text-align: center; margin-bottom: 2rem; }
 .login-logo {
-  max-width: 180px;
-  max-height: 80px;
-  width: auto;
-  height: auto;
-  margin-bottom: 15px;
-  object-fit: contain; /* Empêche l'image d'être coupée */
+  max-width: 180px; max-height: 80px; width: auto; height: auto;
+  margin-bottom: 15px; object-fit: contain;
 }
 
 .alert-box {
-  color: #fca5a5;
-  background: var(--danger-bg);
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  color: #fca5a5; background: var(--danger-bg);
+  padding: 12px; border-radius: 8px; margin-bottom: 20px;
   border: 1px solid rgba(239,68,68,0.3);
-  font-size: 0.9rem;
-  display: flex; gap: 8px; align-items: center;
+  font-size: 0.9rem; display: flex; gap: 8px; align-items: center;
 }
 
 .login-footer {
-  text-align: center;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: var(--border-light);
+  text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: var(--border-light);
 }
 .login-footer a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 600;
+  color: var(--primary); text-decoration: none; font-weight: 600;
   display: inline-flex; align-items: center; gap: 5px;
 }
 
-/* ===== SPECIFIC : GAME CARD ===== */
-.game-card-wrapper {
-  position: relative;
-  height: 400px;
-}
+/* ===== GAME CARD ===== */
+.game-card-wrapper { position: relative; height: 400px; }
 
+/* CORRECTION ICI : flexDirection -> flex-direction */
 .game-card {
   position: absolute; inset: 0; z-index: 10;
-  display: flex; flexDirection: column;
+  display: flex; flex-direction: column;
   border-top: 4px solid var(--primary);
   background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.9) 100%);
 }
 
 .game-card-header {
-  border-bottom: var(--border-light);
-  padding-bottom: 1rem;
-  margin-bottom: 1rem;
+  border-bottom: var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;
 }
-
 .game-card-meta {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
 }
 
 .tag-reward {
-  background: var(--success-bg);
-  color: var(--success);
-  padding: 2px 8px;
-  border-radius: 2px;
-  font-size: 0.8rem;
-  font-weight: bold;
+  background: var(--success-bg); color: var(--success);
+  padding: 2px 8px; border-radius: 2px;
+  font-size: 0.8rem; font-weight: bold;
 }
 
 .question-text {
-  font-size: 1.2rem;
-  line-height: 1.5;
-  font-weight: 500;
-  color: #e2e8f0;
-  min-height: 3.6rem;
+  font-size: 1.2rem; line-height: 1.5; font-weight: 500;
+  color: #e2e8f0; min-height: 3.6rem;
 }
 
 .game-card-body {
-  flex: 1;
-  display: flex; flex-direction: column;
-  gap: 10px;
-  justify-content: center;
+  flex: 1; display: flex; flex-direction: column;
+  gap: 10px; justify-content: center;
 }
 
-.game-card-footer {
-  margin-top: auto;
-  padding-top: 1rem;
-}
-
+.game-card-footer { margin-top: auto; padding-top: 1rem; }
 .quota-row {
   display: flex; justify-content: space-between;
-  font-size: 0.7rem; color: #64748b;
-  margin-bottom: 4px;
+  font-size: 0.7rem; color: #64748b; margin-bottom: 4px;
 }
 
 .card-depth-effect {
   position: absolute; top: 8px; left: 8px; right: 8px; bottom: -8px;
-  background: rgba(255,255,255,0.03);
-  border-radius: var(--radius);
-  z-index: 0;
+  background: rgba(255,255,255,0.03); border-radius: var(--radius); z-index: 0;
 }
 
-/* ===== DASHBOARD ELEMENTS ===== */
+/* ===== UI ELEMENTS ===== */
 .topbar {
-  background: rgba(15, 23, 42, 0.8);
-  border-bottom: 1px solid #334155;
-  padding: 1rem 0;
-  margin-bottom: 2rem;
+  background: rgba(15, 23, 42, 0.8); border-bottom: 1px solid #334155;
+  padding: 1rem 0; margin-bottom: 2rem;
   display: flex; justify-content: space-between; align-items: center;
 }
 
 .avatar {
-  width: 48px; height: 48px;
-  background: #1e293b;
-  border: 1px solid var(--primary);
-  color: var(--primary);
-  display: grid; place-items: center;
-  font-size: 1.2rem;
+  width: 48px; height: 48px; background: #1e293b;
+  border: 1px solid var(--primary); color: var(--primary);
+  display: grid; place-items: center; font-size: 1.2rem;
   clip-path: polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%);
 }
 
 .progress {
-  width: 100%; height: 6px;
-  background: #334155;
-  margin-top: 10px;
-  position: relative;
+  width: 100%; height: 6px; background: #334155;
+  margin-top: 10px; position: relative;
 }
 .progress > span {
-  display: block; height: 100%;
-  background: var(--primary);
+  display: block; height: 100%; background: var(--primary);
   box-shadow: 0 0 10px var(--primary);
 }
 
-/* ===== MODALES / ALERTES ===== */
 .overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.85);
-  z-index: 9999;
-  display: flex; justify-content: center; align-items: center;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  z-index: 9999; display: flex; justify-content: center; align-items: center;
   backdrop-filter: blur(5px);
 }
 
 .modal-box {
-  background: #0f172a;
-  border: 1px solid var(--primary);
+  background: #0f172a; border: 1px solid var(--primary);
   box-shadow: 0 0 50px rgba(56, 189, 248, 0.2);
-  padding: 2.5rem;
-  max-width: 500px; width: 90%;
-  text-align: center;
-  position: relative;
+  padding: 2.5rem; max-width: 500px; width: 90%;
+  text-align: center; position: relative;
 }
-
 .modal-box::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; height: 2px;
-  background: var(--primary);
-  animation: scan 2s infinite linear;
-  opacity: 0.5;
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--primary); animation: scan 2s infinite linear; opacity: 0.5;
 }
 
-.history-scroll {
-  max-height: 400px; overflow-y: auto; text-align: left;
-}
-
+.history-scroll { max-height: 400px; overflow-y: auto; text-align: left; }
 @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
 
-/* ===== MEDIA ===== */
 @media (max-width: 900px) {
   .grid-2 { grid-template-columns: 1fr; }
   .container { padding: 1rem; }
 }
 
-/* Scrollbar futuriste */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-deep); }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
