@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { auth, db, functions } from '../firebase';
-import { doc, onSnapshot, updateDoc, collection, query, orderBy, limit, addDoc, where } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, orderBy, limit, where, runTransaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 
 // IMPORTS COMPOSANTS
 import UserProfileHeader from '../components/UserProfileHeader';
@@ -22,6 +22,7 @@ export default function Dashboard() {
   
   // --- ÉTATS ---
   const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [history, setHistory] = useState([]);
   const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
   const [questionQueue, setQuestionQueue] = useState([]); // Tâches rapides
@@ -35,34 +36,66 @@ export default function Dashboard() {
 
   // --- 1. CHARGEMENT DONNÉES UTILISATEUR & SYSTÈME ---
   useEffect(() => {
-    if (!auth.currentUser) return navigate('/');
-    
-    const uid = auth.currentUser.uid;
+    let unsubUser = () => {};
+    let unsubHistory = () => {};
+    let unsubWithdrawals = () => {};
+    let unsubForms = () => {};
 
-    // A. Profil Utilisateur
-    const unsubUser = onSnapshot(doc(db, "users", uid), (doc) => {
-        if (doc.exists()) setUser(doc.data());
-    });
-    
-    // B. Historique (Derniers mouvements)
-    const qHistory = query(collection(db, "users", uid, "history"), orderBy("date", "desc"), limit(10));
-    const unsubHistory = onSnapshot(qHistory, (snap) => {
+    const cleanupFirestore = () => {
+      unsubUser();
+      unsubHistory();
+      unsubWithdrawals();
+      unsubForms();
+    };
+
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      cleanupFirestore();
+
+      if (!firebaseUser) {
+        setUser(null);
+        setHistory([]);
+        setPendingWithdrawals([]);
+        setForms([]);
+        setAuthChecked(true);
+        navigate('/');
+        return;
+      }
+
+      setAuthChecked(true);
+      const uid = firebaseUser.uid;
+
+      // A. Profil Utilisateur
+      unsubUser = onSnapshot(doc(db, "users", uid), (docSnap) => {
+        if (docSnap.exists()) setUser(docSnap.data());
+      });
+
+      // B. Historique (Derniers mouvements)
+      const qHistory = query(collection(db, "users", uid, "history"), orderBy("date", "desc"), limit(10));
+      unsubHistory = onSnapshot(qHistory, (snap) => {
         setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+      });
 
-    // C. Virements en attente (Pour le panneau Finance)
-    const qWithdrawals = query(collection(db, "withdrawals"), where("userId", "==", uid), where("statut", "==", "pending"));
-    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
+      // C. Virements en attente (Pour le panneau Finance)
+      const qWithdrawals = query(
+        collection(db, "withdrawals"),
+        where("userId", "==", uid),
+        where("statut", "==", "pending")
+      );
+      unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
         setPendingWithdrawals(snap.docs.map(d => d.data()));
-    });
+      });
 
-    // D. Formulaires Disponibles (Dossiers Spéciaux)
-    const qForms = query(collection(db, "forms")); 
-    const unsubForms = onSnapshot(qForms, (snap) => {
+      // D. Formulaires Disponibles (Dossiers Spéciaux)
+      const qForms = query(collection(db, "forms"));
+      unsubForms = onSnapshot(qForms, (snap) => {
         setForms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      });
     });
 
-    return () => { unsubUser(); unsubHistory(); unsubWithdrawals(); unsubForms(); };
+    return () => {
+      unsubAuth();
+      cleanupFirestore();
+    };
   }, [navigate]);
 
   // Calcul du montant total en attente de paiement
@@ -74,7 +107,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Si la file d'attente est vide, on va chercher de nouvelles tâches en base de données
     if (questionQueue.length === 0) {
-       const qTasks = collection(db, "rapid_tasks");
+       const qTasks = query(collection(db, "rapid_tasks"), limit(50));
        
        const unsubTasks = onSnapshot(qTasks, (snapshot) => {
            const dbTasks = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -105,49 +138,94 @@ export default function Dashboard() {
   // Répondre à une Tâche Rapide
   const handleAnswerTask = async (ans, currentQuestion) => {
     // On retire la question de la file locale immédiatement (optimiste)
-    setQuestionQueue(prev => prev.slice(1));
-    
+    setQuestionQueue(prev => {
+      if (!prev.length || prev[0]?.uniqueId !== currentQuestion?.uniqueId) return prev;
+      return prev.slice(1);
+    });
+
+    if (!currentQuestion?.id) {
+      setModalInfo({ open: true, title: "INFO", msg: "Aucune mission disponible pour l'instant." });
+      return;
+    }
+
     try {
-        const submitTask = httpsCallable(functions, 'submitTask');
-        // UPDATE DE SÉCURITÉ : On envoie l'ID (currentQuestion.id est l'ID Firestore)
-        // Le serveur ignorera 'currentQuestion' s'il est envoyé, mais on garde propre.
-        const result = await submitTask({ 
-          answer: ans, 
-          questionId: currentQuestion.id 
+      const submitTask = httpsCallable(functions, 'submitTask');
+      // UPDATE DE SÉCURITÉ : On envoie l'ID (currentQuestion.id est l'ID Firestore)
+      // Le serveur ignorera 'currentQuestion' s'il est envoyé, mais on garde propre.
+      const result = await submitTask({
+        answer: ans,
+        questionId: currentQuestion?.id
+      });
+
+      if (!result?.data?.success) {
+        setModalInfo({ open: true, title: "ALERTE", msg: result?.data?.message || "La tâche n'a pas pu être validée." });
+        setQuestionQueue(prev => {
+          if (!currentQuestion) return prev;
+          const exists = prev.some(t => t.uniqueId === currentQuestion?.uniqueId);
+          return exists ? prev : [currentQuestion, ...prev];
         });
-        
-        if (!result.data.success) {
-            setModalInfo({ open: true, title: "ALERTE", msg: result.data.message });
-        }
-    } catch (error) { 
-        console.error(error); 
-        // Gestion d'erreur visuelle si nécessaire
+      }
+    } catch (error) {
+      console.error(error);
+      setModalInfo({ open: true, title: "ALERTE", msg: "Erreur d'envoi de la tâche." });
+      setQuestionQueue(prev => {
+        if (!currentQuestion) return prev;
+        const exists = prev.some(t => t.uniqueId === currentQuestion?.uniqueId);
+        return exists ? prev : [currentQuestion, ...prev];
+      });
     }
   };
 
   // Demander un virement
   const handleWithdraw = async () => {
-    if (!user || user.economy.enAttente < 2000) return;
+    const currentUser = auth.currentUser;
+    const pendingAmount = user?.economy?.enAttente ?? 0;
+    if (!currentUser || pendingAmount < 2000) return;
+
     try {
-      await addDoc(collection(db, "withdrawals"), {
-        userId: auth.currentUser.uid,
-        nomComplet: `${user.info.prenom} ${user.info.nom}`,
-        banque: user.info.banque,
-        telephone: user.info.telephone,
-        montant: user.economy.enAttente,
-        date: new Date().toISOString(),
-        statut: 'pending'
+      await runTransaction(db, async (tx) => {
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await tx.get(userRef);
+
+        if (!userSnap.exists()) {
+          throw new Error('User not found');
+        }
+
+        const userData = userSnap.data() || {};
+        const liveAmount = userData?.economy?.enAttente ?? 0;
+        if (liveAmount < 2000) {
+          throw new Error('Insufficient balance');
+        }
+
+        const info = userData?.info || {};
+        const firstName = info.prenom || '';
+        const lastName = info.nom || '';
+        const nomComplet = `${firstName} ${lastName}`.trim();
+        const withdrawalRef = doc(collection(db, "withdrawals"));
+
+        tx.set(withdrawalRef, {
+          userId: currentUser.uid,
+          nomComplet,
+          banque: info.banque || '',
+          telephone: info.telephone || '',
+          montant: liveAmount,
+          date: new Date().toISOString(),
+          statut: 'pending'
+        });
+        tx.update(userRef, {
+          "economy.statutRetrait": "waiting",
+          "economy.enAttente": 0
+        });
       });
-      // Mise à jour locale (optimiste) en attendant la cloud function
-      await updateDoc(doc(db, "users", auth.currentUser.uid), { 
-          "economy.statutRetrait": "waiting", 
-          "economy.enAttente": 0 
-      });
+
       setModalInfo({ open: true, title: "TRANSMISSION", msg: "Demande de virement transmise à l'administration." });
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setModalInfo({ open: true, title: "ALERTE", msg: "Impossible d'envoyer la demande de virement." });
+    }
   };
 
-  if (!user) return <div className="flex-center tech-font">CONNEXION AU RÉSEAU...</div>;
+  if (!authChecked || !user) return <div className="flex-center tech-font">CONNEXION AU RÉSEAU...</div>;
 
   return (
     <div className="container" style={{ paddingBottom: '4rem' }}> 
